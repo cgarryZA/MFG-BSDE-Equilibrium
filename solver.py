@@ -867,6 +867,8 @@ class ContXiongLOBModel(nn.Module):
         # Also collect mean spread and inventory for mean-field update
         mean_spreads = []
         mean_inventories = []
+        # Z_t diagnostics: track max |Z| and Lipschitz estimate per timestep
+        z_max_history = []
 
         for t in range(self.bsde.num_time_interval - 1):
             # Track mean-field statistics from Z
@@ -874,6 +876,7 @@ class ContXiongLOBModel(nn.Module):
             delta_a, delta_b = self.bsde._optimal_quotes_tf(z_q)
             mean_spreads.append((torch.mean(delta_a) + torch.mean(delta_b)).item())
             mean_inventories.append(torch.mean(x[:, 1, t]).item())
+            z_max_history.append(torch.max(torch.abs(z)).item())
 
             # BSDE step: Y_{t+1} = Y_t - dt * f(t, X_t, Y_t, Z_t) + Z_t . dW_t
             y = (
@@ -899,9 +902,13 @@ class ContXiongLOBModel(nn.Module):
             + torch.sum(z * dw[:, :, -1], dim=1, keepdim=True)
         )
 
-        # Store mean-field stats for solver to pass back to equation
+        z_max_history.append(torch.max(torch.abs(z)).item())
+
+        # Store diagnostics for solver
         self._last_mean_spreads = mean_spreads
         self._last_mean_inventories = mean_inventories
+        self._last_z_max = z_max_history
+        self._last_z_max_overall = max(z_max_history) if z_max_history else 0.0
 
         return y, mean_y, loss_inter
 
@@ -1014,19 +1021,21 @@ class ContXiongLOBSolver:
                 y_init_val = self.y_init.item()
                 elapsed = time.time() - start_time
 
-                # Extract optimal quotes for diagnostics
-                z_q_info = ""
+                # Extract diagnostics
+                diag_info = ""
+                z_max_val = 0.0
                 if hasattr(self.model, "_last_mean_spreads") and self.model._last_mean_spreads:
                     avg_spread = np.mean(self.model._last_mean_spreads)
-                    z_q_info = "  spread: %.4f" % avg_spread
+                    z_max_val = self.model._last_z_max_overall
+                    diag_info = "  spread: %.4f  max|Z|: %.4f" % (avg_spread, z_max_val)
 
                 training_history.append(
-                    [step, val_loss, y_init_val, elapsed]
+                    [step, val_loss, y_init_val, z_max_val, elapsed]
                 )
                 if self.net_config.verbose:
                     logging.info(
                         "step: %5u,    loss: %.4e, Y0: %.4e,%s    elapsed time: %3u"
-                        % (step, val_loss, y_init_val, z_q_info, elapsed)
+                        % (step, val_loss, y_init_val, diag_info, elapsed)
                     )
 
         # Final validation
@@ -1068,4 +1077,209 @@ class ContXiongLOBSolver:
             "y0": self.y_init.item(),
             "final_loss": val_loss.item(),
             "mean_field_history": mean_field_history,
+        }
+
+
+# =====================================================================
+# Cont-Xiong LOB Jump-Diffusion Model and Solver (Option B: FBSDEJ)
+# =====================================================================
+
+
+class ContXiongLOBJumpModel(nn.Module):
+    """DeepBSDE model for jump-diffusion LOB (FBSDEJ).
+
+    Key difference from continuous version: subnets output 3 values
+    per timestep — (Z, U+, U-) instead of just (Z^S, Z^q).
+
+    Z: gradient w.r.t. price (Brownian component)
+    U+: value jump on buy execution V(q+Δ) - V(q)
+    U-: value jump on sell execution V(q-Δ) - V(q)
+    """
+
+    def __init__(self, config, bsde, device=None):
+        super().__init__()
+        self.eqn_config = config.eqn
+        self.net_config = config.net
+        self.bsde = bsde
+        self.device = device or torch.device("cpu")
+        dtype = torch.float64
+
+        # Y_0: trainable scalar (value at t=0, q=0)
+        self.y_init = nn.Parameter(
+            torch.tensor(
+                np.random.uniform(
+                    low=self.net_config.y_init_range[0],
+                    high=self.net_config.y_init_range[1],
+                    size=[1],
+                ),
+                dtype=dtype,
+            )
+        )
+        # Z_0, U+_0, U-_0: trainable initial values
+        self.z_init = nn.Parameter(
+            torch.tensor(np.random.uniform(-0.1, 0.1, size=[1, 1]), dtype=dtype)
+        )
+        self.u_plus_init = nn.Parameter(
+            torch.tensor(np.random.uniform(-0.1, 0.1, size=[1, 1]), dtype=dtype)
+        )
+        self.u_minus_init = nn.Parameter(
+            torch.tensor(np.random.uniform(-0.1, 0.1, size=[1, 1]), dtype=dtype)
+        )
+
+        # Subnets: input = (S, q) dim=2, output = (Z, U+, U-) dim=3
+        self.subnet = nn.ModuleList(
+            [
+                FeedForwardSubNet(
+                    self.net_config.num_hiddens, 2, 3, dtype=dtype,
+                )
+                for _ in range(bsde.num_time_interval - 1)
+            ]
+        )
+
+    def forward(self, inputs):
+        dw, x, jump_data = inputs
+        dw = torch.as_tensor(dw, dtype=torch.float64, device=self.device)
+        x = torch.as_tensor(x, dtype=torch.float64, device=self.device)
+        n_ask = torch.as_tensor(jump_data["n_ask"], dtype=torch.float64, device=self.device)
+        n_bid = torch.as_tensor(jump_data["n_bid"], dtype=torch.float64, device=self.device)
+
+        dt = self.bsde.delta_t
+        time_stamp = np.arange(0, self.eqn_config.num_time_interval) * dt
+        batch_size = dw.shape[0]
+
+        all_one = torch.ones(batch_size, 1, dtype=torch.float64, device=self.device)
+        y = all_one * self.y_init
+        z = all_one @ self.z_init          # [batch, 1]
+        u_plus = all_one @ self.u_plus_init   # [batch, 1]
+        u_minus = all_one @ self.u_minus_init  # [batch, 1]
+
+        mean_y = [torch.mean(y)]
+        loss_inter = torch.tensor(0.0, dtype=torch.float64, device=self.device)
+
+        for t in range(self.bsde.num_time_interval - 1):
+            # Compute execution rates for compensated Poisson
+            delta_a, delta_b = self.bsde._optimal_quotes_tf(z, u_plus, u_minus)
+            rate_a = self.bsde.lambda_a * self.bsde._exec_prob_tf(delta_a)
+            rate_b = self.bsde.lambda_b * self.bsde._exec_prob_tf(delta_b)
+
+            # Compensated Poisson increments: dÑ = N_n - rate*dt
+            dn_ask = n_ask[:, t:t+1] - rate_a * dt  # [batch, 1]
+            dn_bid = n_bid[:, t:t+1] - rate_b * dt  # [batch, 1]
+
+            # BSDE step with jumps:
+            # Y_{n+1} = Y_n - f*dt + Z*dW + U-*dÑ^a + U+*dÑ^b
+            y = (
+                y
+                - dt * self.bsde.f_tf(time_stamp[t], x[:, :, t], y, z, u_plus, u_minus)
+                + z * dw[:, 0:1, t]      # Brownian (price only, dim=1)
+                + u_minus * dn_ask        # sell execution jump
+                + u_plus * dn_bid         # buy execution jump
+            )
+            mean_y.append(torch.mean(y))
+
+            # Predict (Z, U+, U-) at next timestep
+            out = self.subnet[t](x[:, :, t + 1])
+            z = out[:, 0:1]       # price gradient
+            u_plus = out[:, 1:2]  # jump up value
+            u_minus = out[:, 2:3]  # jump down value
+
+        # Terminal step
+        delta_a, delta_b = self.bsde._optimal_quotes_tf(z, u_plus, u_minus)
+        rate_a = self.bsde.lambda_a * self.bsde._exec_prob_tf(delta_a)
+        rate_b = self.bsde.lambda_b * self.bsde._exec_prob_tf(delta_b)
+        dn_ask = n_ask[:, -1:] - rate_a * dt
+        dn_bid = n_bid[:, -1:] - rate_b * dt
+
+        y = (
+            y
+            - dt * self.bsde.f_tf(time_stamp[-1], x[:, :, -2], y, z, u_plus, u_minus)
+            + z * dw[:, 0:1, -1]
+            + u_minus * dn_ask
+            + u_plus * dn_bid
+        )
+
+        return y, mean_y, loss_inter
+
+
+class ContXiongLOBJumpSolver:
+    """Trains ContXiongLOBJumpModel (FBSDEJ with Poisson jumps)."""
+
+    def __init__(self, config, bsde, device=None):
+        self.eqn_config = config.eqn
+        self.net_config = config.net
+        self.bsde = bsde
+        self.device = device or torch.device("cpu")
+
+        self.model = ContXiongLOBJumpModel(config, bsde, device=self.device)
+        self.model.to(self.device)
+        self.opt_config = self.net_config.opt_config1
+        self.y_init = self.model.y_init
+
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=self.opt_config.lr_values[0], eps=1e-8
+        )
+        self.scheduler = make_piecewise_lr_scheduler(
+            self.optimizer, self.opt_config.lr_boundaries, self.opt_config.lr_values
+        )
+
+    def loss_fn(self, inputs):
+        y_terminal, mean_y, loss_inter = self.model(inputs)
+        dw, x, jump_data = inputs
+        x = torch.as_tensor(x, dtype=torch.float64, device=self.device)
+        y_target = self.bsde.g_tf(self.bsde.total_time, x[:, :, -1])
+        delta = y_terminal - y_target
+        mean_y.append(torch.mean(y_target))
+        loss = loss_inter + torch.mean(
+            torch.where(
+                torch.abs(delta) < DELTA_CLIP,
+                delta ** 2,
+                2 * DELTA_CLIP * torch.abs(delta) - DELTA_CLIP ** 2,
+            )
+        )
+        return loss, mean_y
+
+    def train(self):
+        start_time = time.time()
+        training_history = []
+        valid_data = self.bsde.sample(self.net_config.valid_size)
+
+        for step in range(self.opt_config.num_iterations + 1):
+            if step % self.opt_config.freq_resample == 0:
+                train_data = self.bsde.sample(self.net_config.batch_size)
+
+            self.model.train()
+            self.optimizer.zero_grad()
+            loss, mean_y = self.loss_fn(train_data)
+            loss.backward()
+            self.optimizer.step()
+            self.scheduler.step()
+
+            if step % self.net_config.logging_frequency == 0:
+                self.model.eval()
+                with torch.no_grad():
+                    val_loss, _ = self.loss_fn(valid_data)
+                val_loss = val_loss.item()
+                y_init_val = self.y_init.item()
+                elapsed = time.time() - start_time
+                training_history.append([step, val_loss, y_init_val, elapsed])
+                if self.net_config.verbose:
+                    logging.info(
+                        "step: %5u,    loss: %.4e, Y0: %.4e,    elapsed time: %3u"
+                        % (step, val_loss, y_init_val, elapsed)
+                    )
+
+        # Final validation
+        valid_data = self.bsde.sample(self.net_config.valid_size * 10)
+        self.model.eval()
+        with torch.no_grad():
+            val_loss, _ = self.loss_fn(valid_data)
+
+        print("\n=== Cont-Xiong LOB Jump Results ===")
+        print("Final Y0: %.6f" % self.y_init.item())
+        print("Final loss: %.6e" % val_loss.item())
+
+        return {
+            "history": np.array(training_history),
+            "y0": self.y_init.item(),
+            "final_loss": val_loss.item(),
         }

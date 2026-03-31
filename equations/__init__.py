@@ -4,3 +4,4 @@
 from . import sinebm
 from . import flocking
 from . import contxiong_lob
+from . import contxiong_lob_jump

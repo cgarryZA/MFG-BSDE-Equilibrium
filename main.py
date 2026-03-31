@@ -14,7 +14,8 @@ from pathlib import Path
 from config import Config
 from registry import EQUATION_REGISTRY
 import equations  # triggers @register_equation decorators
-from solver import SineBMSolver, SineBMDBDPSolver, FlockSolver, ContXiongLOBSolver
+from solver import (SineBMSolver, SineBMDBDPSolver, FlockSolver,
+                     ContXiongLOBSolver, ContXiongLOBJumpSolver)
 
 
 def main():
@@ -81,6 +82,8 @@ def main():
     elif config.eqn.eqn_name == "contxiong_lob":
         solver = ContXiongLOBSolver(config, bsde, device=device)
         solver._save_path = "{}_model.pt".format(path_prefix)
+    elif config.eqn.eqn_name == "contxiong_lob_jump":
+        solver = ContXiongLOBJumpSolver(config, bsde, device=device)
     else:
         raise ValueError(f"No solver for equation '{config.eqn.eqn_name}'")
 
@@ -107,6 +110,15 @@ def main():
             comments="",
         )
     elif config.eqn.eqn_name == "contxiong_lob":
+        np.savetxt(
+            "{}_result.txt".format(path_prefix),
+            result["history"],
+            fmt=["%d", "%.5e", "%.5e", "%.5e", "%d"],
+            delimiter=",",
+            header="step,loss_function,Y0_init,z_max,elapsed_time",
+            comments="",
+        )
+    elif config.eqn.eqn_name == "contxiong_lob_jump":
         np.savetxt(
             "{}_result.txt".format(path_prefix),
             result["history"],

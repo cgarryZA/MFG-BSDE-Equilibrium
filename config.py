@@ -31,6 +31,12 @@ class EqnConfig:
     discount_rate: float = 0.1
     q_max: float = 10.0
     s_init: float = 100.0
+    # Jump model specific
+    order_size: float = 1.0
+    h_max: int = 10
+    # Penalty type: "quadratic", "cubic", "exponential"
+    penalty_type: str = "quadratic"
+    gamma: float = 1.0  # for exponential penalty
 
 
 @dataclass

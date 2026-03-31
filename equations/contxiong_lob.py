@@ -72,6 +72,8 @@ class ContXiongLOB(Equation):
         self.phi = getattr(eqn_config, "phi", 0.01)
         self.discount_rate = getattr(eqn_config, "discount_rate", 0.1)
         self.q_max = getattr(eqn_config, "q_max", 10.0)
+        self.penalty_type = getattr(eqn_config, "penalty_type", "quadratic")
+        self.gamma = getattr(eqn_config, "gamma", 1.0)  # for exponential penalty
 
         # Initial state: price at 100, inventory at 0
         self.s_init = getattr(eqn_config, "s_init", 100.0)
@@ -293,8 +295,8 @@ class ContXiongLOB(Equation):
         f_a = self._exec_prob_tf(delta_a) * self.lambda_a
         f_b = self._exec_prob_tf(delta_b) * self.lambda_b
 
-        # Running cost: inventory penalty
-        psi = self.phi * q ** 2
+        # Running cost: inventory penalty (configurable type)
+        psi = self._penalty_tf(q)
 
         # Execution profits: f_a * delta_a + f_b * delta_b
         profit_a = f_a * delta_a
@@ -304,10 +306,24 @@ class ContXiongLOB(Equation):
         # Note: in BSDE, dY = -f dt + Z dW, so positive f means Y decreases
         return -self.discount_rate * y + psi - profit_a - profit_b
 
-    def g_tf(self, t, x):
-        """Terminal condition: g(T, x) = -phi * q_T^2 (liquidation penalty).
+    def _penalty_tf(self, q):
+        """Inventory penalty psi(q). Configurable via penalty_type.
 
-        At terminal time, remaining inventory incurs a quadratic penalty.
+        Types:
+            quadratic: phi * q^2  (standard Avellaneda-Stoikov)
+            cubic:     phi * q^2 + phi * |q|^3 / 3  (non-linear, breaks monotonicity)
+            exponential: phi * (exp(gamma * |q|) - 1)  (severe, blows up at large |q|)
         """
+        if self.penalty_type == "quadratic":
+            return self.phi * q ** 2
+        elif self.penalty_type == "cubic":
+            return self.phi * q ** 2 + self.phi * torch.abs(q) ** 3 / 3.0
+        elif self.penalty_type == "exponential":
+            return self.phi * (torch.exp(self.gamma * torch.abs(q)) - 1.0)
+        else:
+            return self.phi * q ** 2
+
+    def g_tf(self, t, x):
+        """Terminal condition: g(T, x) = -psi(q_T) (liquidation penalty)."""
         q = x[:, 1:2]  # [batch, 1]
-        return -self.phi * q ** 2
+        return -self._penalty_tf(q)
