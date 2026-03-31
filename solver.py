@@ -815,11 +815,12 @@ class ContXiongLOBModel(nn.Module):
         delta_a = 1/alpha + Z^q,   delta_b = 1/alpha - Z^q
     """
 
-    def __init__(self, config, bsde):
+    def __init__(self, config, bsde, device=None):
         super().__init__()
         self.eqn_config = config.eqn
         self.net_config = config.net
         self.bsde = bsde
+        self.device = device or torch.device("cpu")
         dtype = torch.float64
         dim = 2  # (S, q)
 
@@ -850,15 +851,15 @@ class ContXiongLOBModel(nn.Module):
 
     def forward(self, inputs):
         dw, x, mean_y_input = inputs
-        dw = torch.as_tensor(dw, dtype=torch.float64)
-        x = torch.as_tensor(x, dtype=torch.float64)
+        dw = torch.as_tensor(dw, dtype=torch.float64, device=self.device)
+        x = torch.as_tensor(x, dtype=torch.float64, device=self.device)
 
-        loss_inter = torch.tensor(0.0, dtype=torch.float64)
+        loss_inter = torch.tensor(0.0, dtype=torch.float64, device=self.device)
         mean_y = []
         time_stamp = np.arange(0, self.eqn_config.num_time_interval) * self.bsde.delta_t
         batch_size = dw.shape[0]
 
-        all_one = torch.ones(batch_size, 1, dtype=torch.float64, device=dw.device)
+        all_one = torch.ones(batch_size, 1, dtype=torch.float64, device=self.device)
         y = all_one * self.y_init
         z = all_one @ self.z_init  # [batch, 2]
         mean_y.append(torch.mean(y))
@@ -912,14 +913,17 @@ class ContXiongLOBSolver:
     - Periodic drift retraining via update_mean_y_estimate + update_drift
     - Clipped Huber loss on terminal mismatch
     - Piecewise LR scheduler
+    - Supports CPU and CUDA devices
     """
 
-    def __init__(self, config, bsde):
+    def __init__(self, config, bsde, device=None):
         self.eqn_config = config.eqn
         self.net_config = config.net
         self.bsde = bsde
+        self.device = device or torch.device("cpu")
 
-        self.model = ContXiongLOBModel(config, bsde)
+        self.model = ContXiongLOBModel(config, bsde, device=self.device)
+        self.model.to(self.device)
         self.opt_config = self.net_config.opt_config1
         self.y_init = self.model.y_init
 
@@ -933,7 +937,7 @@ class ContXiongLOBSolver:
     def loss_fn(self, inputs):
         y_terminal, mean_y, loss_inter = self.model(inputs)
         dw, x, mean_y_input = inputs
-        x = torch.as_tensor(x, dtype=torch.float64)
+        x = torch.as_tensor(x, dtype=torch.float64, device=self.device)
         y_target = self.bsde.g_tf(self.bsde.total_time, x[:, :, -1])
         delta = y_terminal - y_target
         mean_y.append(torch.mean(y_target))
