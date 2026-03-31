@@ -171,6 +171,54 @@ def plot_inventory_distribution(bsde, out_dir, num_sample=2000):
     print(f"  Mean q_T = {np.mean(q_terminal):.4f}, Std = {np.std(q_terminal):.4f}")
 
 
+def plot_spread_heatmap(config, bsde, model, out_dir):
+    """Heatmap: optimal spread as function of (time, inventory).
+
+    Uses trained subnets at each time step to evaluate Z^q(t, S, q),
+    then derives spread = 2/alpha + 2*Z^q (approximately, for small Z^q).
+    Requires trained model weights.
+    """
+    model.eval()
+    n_t = min(bsde.num_time_interval - 1, len(model.subnet))
+    n_q = 80
+    t_indices = np.linspace(0, n_t - 1, min(n_t, 40), dtype=int)
+    q_range = np.linspace(-4, 4, n_q)
+
+    spread_grid = np.zeros((len(t_indices), n_q))
+
+    for i, t_idx in enumerate(t_indices):
+        for j, q in enumerate(q_range):
+            x = torch.tensor([[bsde.s_init, q]], dtype=torch.float64)
+            with torch.no_grad():
+                z = model.subnet[t_idx](x) / bsde.dim
+            z_q = z[0, 1].item()
+            delta_a = 1.0 / bsde.alpha + z_q
+            delta_b = 1.0 / bsde.alpha - z_q
+            spread_grid[i, j] = delta_a + delta_b
+
+    t_vals = np.array([bsde.t_grid[idx] for idx in t_indices])
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    im = ax.imshow(
+        spread_grid.T, aspect="auto", origin="lower",
+        extent=[t_vals[0], t_vals[-1], q_range[0], q_range[-1]],
+        cmap="RdYlBu_r",
+    )
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label("Bid-ask spread")
+    ax.axhline(y=0, color="white", linestyle="--", alpha=0.5)
+    ax.set_xlabel("Time $t$")
+    ax.set_ylabel("Inventory $q$")
+    ax.set_title("Optimal Spread Surface (trained model)")
+    equilibrium = 2.0 / bsde.alpha
+    ax.set_title(f"Optimal Spread Surface (equilibrium = {equilibrium:.3f})")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "spread_heatmap.png"), dpi=150)
+    plt.close()
+    print("Saved spread_heatmap.png")
+
+
 def plot_value_function(config, bsde, model, out_dir):
     """Plot V(q) at t=0 for a range of inventories."""
     model.eval()
@@ -206,6 +254,8 @@ def main():
     parser.add_argument("--config", type=str, default="configs/lob_d2.json")
     parser.add_argument("--result", type=str, default=None,
                         help="Path to training result .txt file")
+    parser.add_argument("--weights", type=str, default=None,
+                        help="Path to saved model .pt file")
     parser.add_argument("--out_dir", type=str, default="./plots")
     args = parser.parse_args()
 
@@ -215,6 +265,16 @@ def main():
 
     bsde = EQUATION_REGISTRY["contxiong_lob"](config.eqn)
     model = ContXiongLOBModel(config, bsde)
+
+    # Load trained weights if available
+    if args.weights and os.path.exists(args.weights):
+        checkpoint = torch.load(args.weights, weights_only=False)
+        model.load_state_dict(checkpoint["model_state"])
+        model.eval()
+        print(f"Loaded weights from {args.weights}")
+        print(f"  Y0 = {checkpoint['y0']:.6f}, loss = {checkpoint['final_loss']:.6e}")
+    elif args.weights:
+        print(f"Warning: weights file {args.weights} not found, using random init")
 
     # Plot training history if result file exists
     if args.result and os.path.exists(args.result):
@@ -227,6 +287,10 @@ def main():
     # Plot quoting strategy and value function (uses model, even untrained)
     plot_quoting_strategy(config, bsde, model, args.out_dir)
     plot_value_function(config, bsde, model, args.out_dir)
+
+    # Spread heatmap (only useful with trained weights)
+    if args.weights and os.path.exists(args.weights):
+        plot_spread_heatmap(config, bsde, model, args.out_dir)
 
     print(f"\nAll plots saved to {args.out_dir}/")
 

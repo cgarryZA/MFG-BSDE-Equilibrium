@@ -1040,6 +1040,25 @@ class ContXiongLOBSolver:
             print("Mean bid-ask spread: %.4f" % np.mean(self.model._last_mean_spreads))
             print("Equilibrium spread (2/alpha): %.4f" % (2.0 / self.bsde.alpha))
 
+        # Save model weights for reloading without retraining
+        if hasattr(self, '_save_path'):
+            save_data = {
+                "model_state": self.model.state_dict(),
+                "config_eqn": {
+                    "sigma_s": self.bsde.sigma_s,
+                    "lambda_a": self.bsde.lambda_a,
+                    "lambda_b": self.bsde.lambda_b,
+                    "alpha": self.bsde.alpha,
+                    "phi": self.bsde.phi,
+                    "discount_rate": self.bsde.discount_rate,
+                },
+                "y0": self.y_init.item(),
+                "final_loss": val_loss.item(),
+                "mean_field_history": mean_field_history,
+            }
+            torch.save(save_data, self._save_path)
+            logging.info("Model saved to %s" % self._save_path)
+
         return {
             "history": np.array(training_history),
             "y0": self.y_init.item(),
