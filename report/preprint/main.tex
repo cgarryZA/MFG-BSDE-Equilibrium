@@ -47,7 +47,7 @@
 
 % ============================================================
 \begin{abstract}
-We develop a deep learning solver for optimal market-making in limit order books, preserving the discrete microstructure dynamics of the Cont--Xiong (2024) dealer market model. The solver extends the Deep BSDE framework (Han, Jentzen, E, 2018) to forward-backward SDEs with Poisson jumps (FBSDEJ), where the neural network outputs both the Brownian gradient $Z_t$ and jump value controls $U_t^\pm$ at each time step. Optimal bid-ask quotes are recovered from the discrete value increments via the HJB first-order conditions. We validate against a finite-difference policy iteration baseline solving the exact discrete-inventory HJB, achieving 2.5\% value accuracy. As a diagnostic, we compare against a diffusion-based surrogate obtained by moment-matching the Poisson order flow. The surrogate achieves lower training loss but materially distorts the optimal spread (1.333 vs ground-truth 1.432), demonstrating that state-process moment matching does not preserve optimal controls. We conduct preliminary stress tests under non-linear inventory penalties and discuss the limitations of both formulations.
+We develop a deep learning solver for optimal market-making in limit order books, preserving the discrete microstructure dynamics of the Cont--Xiong (2024) dealer market model. The solver extends the Deep BSDE framework (Han, Jentzen, E, 2018) to forward-backward SDEs with Poisson jumps (FBSDEJ), where the neural network outputs both the Brownian gradient $Z_t$ and jump value controls $U_t^\pm$ at each time step. Optimal bid-ask quotes are recovered from the discrete value increments via the HJB first-order conditions. We validate against a matched finite-horizon finite-difference baseline solving the same discrete-inventory HJB with the same terminal condition. The diffusion surrogate achieves $<0.1\%$ value error and its learned policy captures $99.3\%$ of the FD-optimal P\&L in forward simulation. The surrogate's structurally constant spread ($2/\alpha$) differs from the FD spread ($1.370$) by $2.7\%$, quantifying the cost of replacing discrete value increments with local derivatives. We conduct preliminary stress tests under non-linear inventory penalties and discuss the limitations of both formulations.
 \end{abstract}
 
 \noindent\textbf{Keywords:} backward stochastic differential equations, deep learning, mean-field games, limit order books, market-making, jump-diffusion
@@ -274,31 +274,23 @@ Batch size & $B$ & 256 (continuous), 512 (jump) & \\
 \toprule
 Method & $Y_0$ or $V(0)$ & Loss & Spread & Error \\
 \midrule
-FD policy iteration ($T = \infty$) & 4.555 & exact & 1.432 & --- \\
-FD ($T = 1$, rescaled${}^*$) & 0.433 & exact & 1.432 & --- \\
-\textbf{Deep BSDE jump (5000 iter)} & \textbf{0.444} & $8.6 \times 10^{-4}$ & discrete & $+2.5\%$ \\
-Deep BSDE diffusion surrogate (5000 iter) & 0.457 & $3.4 \times 10^{-5}$ & 1.333 & $+5.5\%$ \\
+\textbf{FD finite-horizon (matched $T$, $g$)} & \textbf{0.457} & exact & 1.370 & --- \\
+FD stationary ($T = \infty$) & 4.555 & exact & 1.432 & --- \\
+\textbf{Deep BSDE surrogate (5000 iter)} & \textbf{0.457} & $3.4 \times 10^{-5}$ & 1.333 & $<0.1\%$ \\
+Deep BSDE jump (5000 iter) & 0.444 & $8.6 \times 10^{-4}$ & discrete & $2.8\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent ${}^*$Rescaled: $V_T(0) \approx V_\infty(0) \cdot (1 - e^{-rT})$. This is a heuristic correction assuming stationary running payoff, not a proved finite-horizon bound.
-
-\Cref{fig:comparison} shows the value function and optimal spread across inventory for all methods.
-
-\begin{figure}[ht]
-  \centering
-  \includegraphics[width=0.9\textwidth]{figures/fd_vs_deepbsde.png}
-  \caption{Left: value function $V(q)$ for FD ground truth (solid), diffusion surrogate (dashed), and point estimates from jump model and surrogate at $q = 0$. Right: optimal spread across inventory. The FD spread varies with $q$ ($1.43$--$1.47$); the surrogate is structurally constant at $2/\alpha = 1.333$.}
-  \label{fig:comparison}
-\end{figure}
+\noindent The finite-horizon FD solves the \emph{same} problem: same $T = 1$, same $g(X_T) = -\psi(q_T)$, same parameters. This is an apples-to-apples comparison, unlike the earlier heuristic rescaling of the stationary solution.
 
 \paragraph{Key observations.}
 \begin{enumerate}
-  \item The \textbf{jump model is more accurate} ($2.5\%$ error) than the surrogate ($5.5\%$), consistent with preserving discrete dynamics.
-  \item The \textbf{surrogate distorts the optimal spread}: $1.333$ vs $1.432$ ($6.9\%$ error). This confirms \Cref{cav:surrogate}: moment matching of the state does not preserve optimal controls.
-  \item The \textbf{jump model has $25\times$ higher loss} due to Poisson variance in the compensated increments.
-  \item \textbf{Finite differences are trivially superior} at $d = 2$: 7 iterations to machine precision vs 5000 gradient steps. The deep method's value is potential scalability, not low-dimensional performance.
+  \item Against the \textbf{matched finite-horizon baseline}, the diffusion surrogate achieves $<0.1\%$ value error at $q = 0$. This is much stronger than the previously reported $5.5\%$, which was an artefact of comparing against a heuristically rescaled stationary solution.
+  \item The \textbf{surrogate spread} ($1.333$) differs from the FD spread ($1.370$) by $2.7\%$, quantifying the cost of replacing discrete value increments with local derivatives.
+  \item The \textbf{jump model} ($Y_0 = 0.444$, $2.8\%$ error) is less accurate in value than the surrogate. This is likely due to the higher variance of compensated Poisson increments requiring more training iterations.
+  \item \textbf{Forward policy simulation} (\Cref{sec:simulation}) shows the surrogate policy achieves P\&L within $0.7\%$ of the FD-optimal policy (Sharpe $0.82$ vs $0.81$), confirming the learned policy is economically functional.
+  \item \textbf{Finite differences are trivially superior} at $d = 2$. The deep method's value is potential scalability.
 \end{enumerate}
 
 \subsection{Convergence and Quoting Strategy}
@@ -343,6 +335,30 @@ Deep BSDE diffusion surrogate (5000 iter) & 0.457 & $3.4 \times 10^{-5}$ & 1.333
   \caption{Ask quote (left) and quote skew $\delta^a - \delta^b$ (right) over (time, inventory).}
   \label{fig:heatmap}
 \end{figure}
+
+\subsection{Forward Policy Simulation}
+\label{sec:simulation}
+
+To validate that the learned control is economically functional (not merely a good PDE approximation), we simulate 5000 market-making paths under both the Deep BSDE policy and the FD-optimal policy using the same random seed.
+
+\begin{table}[ht]
+\centering
+\caption{Forward simulation under learned vs FD-optimal policy (5000 paths).}
+\label{tab:simulation}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Metric & BSDE Policy & FD Policy \\
+\midrule
+Mean final P\&L & 0.466 & 0.469 \\
+Std final P\&L & 0.571 & 0.580 \\
+Sharpe ratio & 0.82 & 0.81 \\
+Mean $|q_T|$ & 0.54 & 0.53 \\
+Mean spread & 1.333 & 1.368 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The BSDE policy performs within $0.7\%$ of the FD-optimal policy in mean P\&L, with comparable inventory risk and a marginally higher Sharpe ratio. The spread difference ($1.333$ vs $1.368$) reflects the structural constant-spread property of the surrogate, but in realised performance this has minimal economic impact at $\phi = 0.01$.
 
 \subsection{Stress Tests Under Non-Linear Penalties}
 \label{sec:stress}
