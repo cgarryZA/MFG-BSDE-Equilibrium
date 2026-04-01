@@ -75,7 +75,7 @@ No published work applies the Deep BSDE framework to limit order book market-mak
   \item The experiments are at $d = 2$ (price + inventory). At this dimension, finite differences are trivially superior. The value of the deep method lies in potential scalability, not demonstrated superiority.
   \item The mean-field coupling uses a moment-based proxy for the population distribution, not full distribution dependence.
   \item The diffusion surrogate solves a \emph{different control problem} from the original game. We present it as a diagnostic baseline, not as a solver for the Cont--Xiong model.
-  \item The price process $S_t$ is economically inert in the reported experiments: the value function depends only on inventory $q$. We carry $S_t$ for architectural generality.
+  \item The price process $S_t$ is economically inert: with driftless price, execution rates independent of $S$, and linear mark-to-market terminal wealth $q_T S_T$, the value function decomposes as $V(t, x, s, q) = x + qs + \phi(t, q)$, reducing the control problem to one dimension in $q$. Making $S$ genuinely active would require price-dependent execution (adverse selection) or a predictive signal, which we leave to future work.
 \end{itemize}
 
 % ============================================================

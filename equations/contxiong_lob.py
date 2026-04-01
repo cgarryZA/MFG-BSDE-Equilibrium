@@ -84,8 +84,6 @@ class ContXiongLOB(Equation):
         self.q_max = getattr(eqn_config, "q_max", 10.0)
         self.penalty_type = getattr(eqn_config, "penalty_type", "quadratic")
         self.gamma = getattr(eqn_config, "gamma", 1.0)  # for exponential penalty
-        self.mark_to_market = getattr(eqn_config, "mark_to_market", False)
-        self.risk_aversion = getattr(eqn_config, "risk_aversion", 0.0)  # gamma_risk for exponential utility
 
         # Initial state: price at 100, inventory at 0
         self.s_init = getattr(eqn_config, "s_init", 100.0)
@@ -346,17 +344,8 @@ class ContXiongLOB(Equation):
         profit_a = f_a * delta_a
         profit_b = f_b * delta_b
 
-        # Mark-to-market: when active, inventory q exposed to price risk
-        # adds a running cost from price variance: gamma_risk * q^2 * sigma^2 / 2
-        # This is the standard Avellaneda-Stoikov risk aversion term
-        if self.mark_to_market and self.risk_aversion > 0:
-            s = x[:, 0:1]  # price (now economically active)
-            mtm_cost = self.risk_aversion * q ** 2 * self.sigma_s ** 2 / 2
-        else:
-            mtm_cost = 0.0
-
-        # Generator: f = -r*y - psi - mtm_cost + profits
-        return -self.discount_rate * y - psi - mtm_cost + profit_a + profit_b
+        # Generator: f = -r*y - psi + profits
+        return -self.discount_rate * y - psi + profit_a + profit_b
 
     def _penalty_tf(self, q):
         """Inventory penalty psi(q). Configurable via penalty_type.
@@ -376,10 +365,6 @@ class ContXiongLOB(Equation):
             return self.phi * q ** 2
 
     def g_tf(self, t, x):
-        """Terminal condition: g(T, x) = -psi(q_T).
-        When mark-to-market is active, terminal also includes liquidation
-        at current price: q_T * S_T (but this cancels in the BSDE since
-        we track excess value over mark-to-market).
-        """
+        """Terminal condition: g(T, x) = -psi(q_T)."""
         q = x[:, 1:2]  # [batch, 1]
         return -self._penalty_tf(q)

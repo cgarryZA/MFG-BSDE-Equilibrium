@@ -37,9 +37,6 @@ class EqnConfig:
     # Penalty type: "quadratic", "cubic", "exponential"
     penalty_type: str = "quadratic"
     gamma: float = 1.0  # for exponential penalty
-    # Mark-to-market: price becomes economically active
-    mark_to_market: bool = False
-    risk_aversion: float = 0.0  # gamma_risk for inventory price risk
 
 
 @dataclass
