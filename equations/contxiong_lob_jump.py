@@ -29,7 +29,21 @@ from .base import Equation
 
 @register_equation("contxiong_lob_jump")
 class ContXiongLOBJump(Equation):
-    """Cont-Xiong LOB with exact Poisson jumps for inventory (FBSDEJ)."""
+    """Cont-Xiong LOB with exact Poisson jumps for inventory (FBSDEJ).
+
+    This is the microstructure-preserving solver. Unlike the diffusion
+    surrogate (ContXiongLOB), this formulation:
+    - Preserves discrete inventory jumps of size ±Delta
+    - Uses compensated Poisson processes in the backward equation
+    - Neural network outputs (Z, U+, U-) per timestep
+    - Optimal quotes derived from U± via the exact discrete HJB FOC
+
+    Empirically closer to FD ground truth (2.5% error) than the diffusion
+    surrogate (5.5% error), but has higher training variance due to Poisson
+    noise in the compensated increments.
+
+    Note: S_t is economically inert — value depends only on (t, q).
+    """
 
     def __init__(self, eqn_config):
         super().__init__(eqn_config)

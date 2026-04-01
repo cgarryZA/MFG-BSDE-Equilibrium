@@ -18,21 +18,20 @@
 \usepackage{natbib}
 \bibliographystyle{plainnat}
 
-% Theorem environments
 \newtheorem{theorem}{Theorem}
 \newtheorem{proposition}[theorem]{Proposition}
 \newtheorem{lemma}[theorem]{Lemma}
 \newtheorem{remark}[theorem]{Remark}
 \newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
 \newtheorem{caveat}[theorem]{Caveat}
 
-% Notation shortcuts
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\dd}{\mathrm{d}}
 \newcommand{\mup}{\mu_t}
 
-\title{Deep Mean-Field BSDE Methods for Optimal Market-Making\\in Limit Order Books: A Proof of Concept}
+\title{A Deep Jump-BSDE Solver for Mean-Field Market-Making\\in Limit Order Books}
 
 \author{
   Christian Garry \\
@@ -48,178 +47,164 @@
 
 % ============================================================
 \begin{abstract}
-We present a proof-of-concept integration of the Deep BSDE method (Han, Jentzen, E, 2018) with the McKean--Vlasov fictitious play framework (Han, Hu, Long, 2022) for solving optimal market-making problems in limit order books. Starting from the multi-dealer intensity control game of Cont and Xiong~(2024), we derive two computational formulations: (i)~a \emph{heuristic} continuous inventory relaxation where the Poisson order flow is approximated by a diffusion, yielding an MV-FBSDE amenable to the Deep BSDE architecture; and (ii)~an exact jump-diffusion formulation (FBSDEJ) where the neural network outputs both the Brownian gradient $Z_t$ and the Poisson jump controls $U_t^\pm$. In the continuous formulation, optimal bid-ask quotes are recovered from the learned BSDE control via the value function gradient, recovering the classical Avellaneda--Stoikov~(2008) spread $2/\alpha$ as a sanity check. We conduct systematic stress tests under non-linear inventory penalties, documenting gradient instabilities that arise when the backward driver's Lipschitz conditions are violated. We discuss the modelling limitations of the diffusion approximation and the gap between the surrogate control problem and the original discrete game.
+We develop a deep learning solver for optimal market-making in limit order books, preserving the discrete microstructure dynamics of the Cont--Xiong (2024) dealer market model. The solver extends the Deep BSDE framework (Han, Jentzen, E, 2018) to forward-backward SDEs with Poisson jumps (FBSDEJ), where the neural network outputs both the Brownian gradient $Z_t$ and jump value controls $U_t^\pm$ at each time step. Optimal bid-ask quotes are recovered from the discrete value increments via the HJB first-order conditions. We validate against a finite-difference policy iteration baseline solving the exact discrete-inventory HJB, achieving 2.5\% value accuracy. As a diagnostic, we compare against a diffusion-based surrogate obtained by moment-matching the Poisson order flow. The surrogate achieves lower training loss but materially distorts the optimal spread (1.333 vs ground-truth 1.432), demonstrating that state-process moment matching does not preserve optimal controls. We conduct preliminary stress tests under non-linear inventory penalties and discuss the limitations of both formulations.
 \end{abstract}
 
-\noindent\textbf{Keywords:} backward stochastic differential equations, deep learning, mean-field games, limit order books, market-making, McKean--Vlasov
+\noindent\textbf{Keywords:} backward stochastic differential equations, deep learning, mean-field games, limit order books, market-making, jump-diffusion
 
 % ============================================================
 \section{Introduction}
 \label{sec:introduction}
 
-The interaction of algorithmic market makers in electronic markets poses a challenging stochastic control problem: each agent must optimise bid-ask quotes in continuous time, facing inventory risk, uncertain order flow, and strategic competition from other participants. Cont and Xiong~\cite{cont2024dynamics} formalise this as a stochastic differential game of intensity control among $N$ dealers, characterising Nash equilibria via a coupled system of Hamilton--Jacobi--Bellman (HJB) equations. Their model features Poisson order arrivals, discrete inventory increments of size $\Delta$, and execution probabilities that depend on competitors' quotes.
+The interaction of algorithmic market makers in electronic markets poses a challenging stochastic control problem. Cont and Xiong~\cite{cont2024dynamics} formalise this as a stochastic differential game of intensity control among $N$ dealers, with Poisson order arrivals, discrete inventory increments of size $\Delta$, and execution probabilities depending on competitors' quotes. In the mean-field limit ($N \to \infty$), the problem reduces to a McKean--Vlasov control problem with a nonlocal HJB equation.
 
-Separately, the Deep BSDE method introduced by E, Han, and Jentzen~\cite{e2017deep, han2018solving} has demonstrated that high-dimensional parabolic PDEs can be solved by reformulating them as backward stochastic differential equations (BSDEs) and approximating the gradient process $Z_t$ with neural networks. Han, Hu, and Long~\cite{han2022learning} extended this to McKean--Vlasov FBSDEs via a fictitious play outer loop, enabling the solution of mean-field games with general distribution dependence.
+The Deep BSDE method (E, Han, Jentzen~\cite{e2017deep, han2018solving}) solves high-dimensional semilinear PDEs by reformulating them as BSDEs and learning the gradient process $Z_t$. Han, Hu, and Long~\cite{han2022learning} extended this to McKean--Vlasov FBSDEs via fictitious play. Deep BSDE solvers for jump-diffusions exist~\cite{andersson2023deep} but have not been applied to market-making.
 
-Despite the maturity of both literatures, no published work applies the Deep MV-BSDE framework directly to limit order book market-making. Cont and Xiong~\cite{cont2024dynamics} note that the Deep BSDE method could be used for best-response computation but employ direct numerical optimisation instead. Deep BSDE solvers for jump-diffusions exist~\cite{andersson2023deep} but have not been applied to market-making controls where the learned $Z_t$ and $U_t^\pm$ have direct financial interpretation.
+No published work applies the Deep BSDE framework to limit order book market-making with explicit control recovery from the learned gradient and jump objects. Cont and Xiong~\cite{cont2024dynamics} note the possibility but use direct numerical optimisation.
 
-\paragraph{Contribution.} This paper is a proof-of-concept study, not a claim of a fully validated new method. We:
+\paragraph{Contribution.} This is a computational study, not a claim of a fully validated method. We:
 \begin{enumerate}
-  \item Derive a heuristic continuous relaxation of the Cont--Xiong model yielding a 2D MV-FBSDE, explicitly noting the assumptions under which this approximation is valid and where it may fail (\Cref{sec:relaxation}).
-  \item Implement an exact jump-diffusion formulation (FBSDEJ) preserving the discrete Poisson dynamics (\Cref{sec:jump}).
-  \item Show that optimal quotes can be recovered from the BSDE control variables, with careful treatment of the diffusion scaling (\Cref{sec:quotes}).
-  \item Conduct stress tests under non-linear penalties, providing empirical evidence of gradient instability (\Cref{sec:stress}).
+  \item Formulate a \textbf{deep jump-BSDE solver} for the Cont--Xiong market-making model, preserving discrete Poisson inventory dynamics (\Cref{sec:jump}). The neural network outputs $(Z_t, U_t^+, U_t^-)$ and optimal quotes are extracted from the value increments.
+  \item Validate against \textbf{finite-difference policy iteration} solving the exact discrete HJB (\Cref{sec:fd}), achieving $2.5\%$ error in $Y_0$.
+  \item Compare against a \textbf{diffusion surrogate baseline} and show it distorts the optimal control: the spread is $1.333$ vs ground-truth $1.432$ (\Cref{sec:surrogate}).
+  \item Conduct preliminary \textbf{stress tests} under non-linear inventory penalties (\Cref{sec:stress}).
 \end{enumerate}
 
-\paragraph{Limitations.} We emphasise upfront that:
+\paragraph{Scope and limitations.}
 \begin{itemize}
-  \item The continuous relaxation is a \emph{heuristic modelling reduction}: moment matching for the state process does not guarantee that the induced optimal control or value function approximates the original discrete game (\Cref{sec:relaxation_caveats}).
-  \item The mean-field coupling is demonstrated in a simplified form, and convergence of the fictitious play outer loop is not rigorously established for this specific model.
-  \item The numerical experiments are conducted at $d = 2$ and serve primarily as sanity checks, not as evidence that the method scales to realistic market-making dimensions.
+  \item The experiments are at $d = 2$ (price + inventory). At this dimension, finite differences are trivially superior. The value of the deep method lies in potential scalability, not demonstrated superiority.
+  \item The mean-field coupling uses a moment-based proxy for the population distribution, not full distribution dependence.
+  \item The diffusion surrogate solves a \emph{different control problem} from the original game. We present it as a diagnostic baseline, not as a solver for the Cont--Xiong model.
+  \item The price process $S_t$ is economically inert in the reported experiments: the value function depends only on inventory $q$. We carry $S_t$ for architectural generality.
 \end{itemize}
 
 % ============================================================
-\section{Mathematical Framework}
-\label{sec:framework}
+\section{The Cont--Xiong Dealer Market Model}
+\label{sec:model}
 
-\subsection{The Cont--Xiong Dealer Market Model}
+\begin{assumption}\label{ass:model}
+We assume: $\lambda^a, \lambda^b > 0$; $\alpha > 0$; execution probabilities $f_m^i$ are smooth in $\delta$, bounded in $(0,1)$, and satisfy $\sum_{i=1}^N f_m^i \le 1$; the penalty $\psi: \R \to \R_+$ is at least $C^1$, with $\psi(0) = 0$ and $\psi(q) \to \infty$ as $|q| \to \infty$.
+\end{assumption}
 
-We consider $N$ market makers quoting around a mid-price $S_t = S_0 + \sigma W_t$ on a filtered probability space $(\Omega, \mathcal{F}, \mathbb{F}, \mathbb{P})$. Market maker $i$ quotes a centred ask spread $\delta_t^{a,i}$ and bid spread $\delta_t^{b,i}$. Order flow arrives as Poisson processes with intensities:
+We consider $N$ market makers quoting around a mid-price $S_t = S_0 + \sigma W_t$. Market maker $i$ quotes ask and bid spreads $\delta_t^{a,i}, \delta_t^{b,i}$. Order flow arrives as Poisson processes:
 \begin{equation}\label{eq:poisson_intensity}
   \nu_t^{a,i} = \lambda^a f_a^i(\delta_t^{a,i}, \boldsymbol{\delta}_t^{-i}), \qquad
-  \nu_t^{b,i} = \lambda^b f_b^i(\delta_t^{b,i}, \boldsymbol{\delta}_t^{-i}),
+  \nu_t^{b,i} = \lambda^b f_b^i(\delta_t^{b,i}, \boldsymbol{\delta}_t^{-i}).
 \end{equation}
-where $f_a^i, f_b^i$ are execution probability functions satisfying $\sum_{i=1}^N f_m^i \le 1$ \cite[Assumption~2.1]{cont2024dynamics}. Inventory evolves by discrete jumps:
+Inventory evolves by jumps of size $\Delta$:
 \begin{equation}\label{eq:inventory_discrete}
-  \dd q_t^i = \Delta \bigl( \dd N_t^{b,i} - \dd N_t^{a,i} \bigr).
+  \dd q_t^i = \Delta \bigl( \dd N_t^{b,i} - \dd N_t^{a,i} \bigr),
 \end{equation}
-Each market maker maximises discounted expected profit:
+where ask execution \emph{decreases} inventory and bid execution \emph{increases} it. Each agent maximises discounted profit:
 \begin{equation}\label{eq:objective}
-  J_i = \E\biggl[
-    \int_0^\infty e^{-rt} \Bigl(
-      \delta_t^{a,i} \Delta \, \dd N_t^{a,i} + \delta_t^{b,i} \Delta \, \dd N_t^{b,i}
-      - \psi(q_t^i) \, \dd t
-    \Bigr)
-  \biggr].
+  J_i = \E\biggl[ \int_0^\infty e^{-rt} \Bigl(
+    \delta_t^{a,i} \Delta \, \dd N_t^{a,i} + \delta_t^{b,i} \Delta \, \dd N_t^{b,i} - \psi(q_t^i) \, \dd t
+  \Bigr) \biggr].
 \end{equation}
 
-\subsection{Mean-Field Limit}
-
-As $N \to \infty$, the execution probability for a representative agent factorises as
+\paragraph{Mean-field limit.} As $N \to \infty$, define $\mup \coloneqq \mathcal{L}(q_t, \delta_t^a, \delta_t^b)$ as the joint law of inventory and quotes in the population. The execution probability factorises as
 \begin{equation}\label{eq:exec_prob_mf}
-  f(\delta, \mup) = e^{-\alpha \delta} \cdot h(\mup),
+  f(\delta, \mup) = e^{-\alpha \delta} \cdot h(\mup), \qquad h(\mup) \in (0,1],
 \end{equation}
-where $h(\mup) \in (0,1]$ captures competition from the population. The mean-field HJB for the stationary value function $V(q)$ is \cite[eq.~(28)]{cont2024dynamics}:
+where $h$ captures competition. In our implementation, $h(\mup)$ is approximated by a moment-based proxy $\hat{h}(t, \bar{q}_t, \bar{\delta}_t)$ trained on empirical mean inventory $\bar{q}_t$ and mean spread $\bar{\delta}_t$. This is \emph{not} full distribution dependence in the sense of~\cite{han2022learning}.
+
+The \textbf{stationary mean-field HJB} for the value function $V(q)$ is \cite[eq.~(28)]{cont2024dynamics}:
 \begin{equation}\label{eq:hjb}
-  rV(q) + \psi(q) = \lambda^a \sup_{\delta^a} \Bigl[ f(\delta^a, \mup) \Bigl( \delta^a \Delta + V(q - \Delta) - V(q) \Bigr) \Bigr]
-  + \lambda^b \sup_{\delta^b} \Bigl[ f(\delta^b, \mup) \Bigl( \delta^b \Delta + V(q + \Delta) - V(q) \Bigr) \Bigr].
+  rV(q) + \psi(q) = \lambda^a \sup_{\delta^a} \Bigl[ f(\delta^a, \mup) \bigl( \delta^a \Delta + V(q - \Delta) - V(q) \bigr) \Bigr]
+  + \lambda^b \sup_{\delta^b} \Bigl[ f(\delta^b, \mup) \bigl( \delta^b \Delta + V(q + \Delta) - V(q) \bigr) \Bigr].
 \end{equation}
 
-\subsection{Continuous Relaxation (Option A)}
-\label{sec:relaxation}
-
-\begin{proposition}[Diffusion approximation of inventory]\label{prop:diffusion}
-Let $q_t$ evolve by Poisson jumps of size $\Delta$ with ask rate $\nu^a$ and bid rate $\nu^b$. Over $[t, t + \dd t]$:
-\begin{align*}
-  \E[\dd q_t] &= (\nu^b - \nu^a) \Delta \, \dd t, \\
-  \mathrm{Var}[\dd q_t] &= (\nu^a + \nu^b) \Delta^2 \, \dd t.
-\end{align*}
-The diffusion $\dd q_t = (\nu^b - \nu^a)\Delta \, \dd t + \Delta\sqrt{\nu^a + \nu^b} \, \dd W_t^q$ matches both moments.
-\end{proposition}
-
-\begin{proof}
-Immediate from $\E[N_{t+h} - N_t] = \nu h$ and $\mathrm{Var}[N_{t+h} - N_t] = \nu h$ for a Poisson process.
-\end{proof}
-
-Setting $\Delta = 1$, the full forward SDE is $X_t = (S_t, q_t) \in \R^2$:
+\paragraph{Optimal quotes from the discrete HJB.} The ask optimand is $e^{-\alpha\delta^a}(\delta^a\Delta + V(q-\Delta) - V(q))$. Setting the derivative to zero:
 \begin{align}
-  \dd S_t &= \sigma \, \dd W_t^S, \label{eq:forward_price} \\
-  \dd q_t &= \bigl(\lambda^b f_b - \lambda^a f_a\bigr) \dd t + \sqrt{\lambda^b f_b + \lambda^a f_a} \, \dd W_t^q, \label{eq:forward_q}
+  &-\alpha e^{-\alpha\delta^a}\bigl(\delta^a\Delta + V(q-\Delta) - V(q)\bigr) + e^{-\alpha\delta^a}\Delta = 0 \nonumber \\
+  &\Longrightarrow \quad \delta^{a*} = \frac{1}{\alpha} - \frac{V(q-\Delta) - V(q)}{\Delta} = \frac{1}{\alpha} + \frac{V(q) - V(q-\Delta)}{\Delta}. \label{eq:foc_ask}
 \end{align}
-where $f_m \coloneqq f(\delta_t^m, \mup)$ and $W^S, W^q$ are independent Brownian motions.
-
-\subsubsection{Caveats of the Continuous Relaxation}
-\label{sec:relaxation_caveats}
-
-\begin{caveat}
-The diffusion approximation (\Cref{prop:diffusion}) matches the first two moments of the state increment but does \emph{not} guarantee that:
-\begin{enumerate}
-  \item[(a)] the optimal control in the approximate problem is close to the optimal control in the original discrete game;
-  \item[(b)] the value functions are close;
-  \item[(c)] the Nash equilibrium of the mean-field game is preserved.
-\end{enumerate}
-The supremum over controls in the HJB~\eqref{eq:hjb} can amplify approximation error. The discrete jump structure of the original model determines the nonlocal terms $V(q \pm \Delta) - V(q)$ in the HJB, and replacing these with derivatives $\pm \partial_q V$ discards higher-order information.
-
-The continuous relaxation is therefore a \emph{heuristic computational interface}: it produces a surrogate control problem that is tractable for the Deep BSDE architecture, but the relationship between its solution and the original Cont--Xiong game equilibrium remains unproven. We present it as an engineering approximation, not as a theoretical result.
-\end{caveat}
-
-\subsubsection{PDE-BSDE Connection}
-\label{sec:pde_bsde}
-
-Under the continuous relaxation, the optimised HJB becomes a semilinear PDE after substituting the optimal quotes (derived below). By the nonlinear Feynman--Kac theorem \cite{pardoux1990adapted, elkaroui1997bsde}, if $V \in C^{1,2}([0,T] \times \R^2)$ solves this PDE, then $Y_t = V(t, X_t)$ satisfies
-\begin{equation}\label{eq:bsde_dynamics}
-  \dd Y_t = -f(t, X_t, Y_t, Z_t) \, \dd t + Z_t^S \, \dd W_t^S + Z_t^q \, \dd W_t^q,
+Analogously for the bid, the optimand is $e^{-\alpha\delta^b}(\delta^b\Delta + V(q+\Delta) - V(q))$:
+\begin{equation}\label{eq:foc_bid}
+  \delta^{b*} = \frac{1}{\alpha} - \frac{V(q+\Delta) - V(q)}{\Delta}.
 \end{equation}
-where
-\begin{equation}\label{eq:feynman_kac}
-  Z_t = \sigma(t, X_t)^\top \nabla_x V(t, X_t) = \bigl(\sigma_S \, \partial_S V, \; \sigma_q \, \partial_q V\bigr),
-\end{equation}
-with $\sigma_S = \sigma$ and $\sigma_q = \sqrt{\lambda^b f_b + \lambda^a f_a}$ the state-dependent diffusion coefficients from~\eqref{eq:forward_price}--\eqref{eq:forward_q}.
+At $q = 0$ with symmetric $V$, both quotes equal $1/\alpha$ and the total spread is $2/\alpha$.
 
-\begin{remark}[Finite-horizon truncation]\label{rem:truncation}
-The original Cont--Xiong model~\eqref{eq:objective} is infinite-horizon with discount rate $r$. We train on a finite-horizon truncation $[0, T]$ with terminal condition $g(X_T) = -\psi(q_T)$. This introduces a truncation error of order $O(e^{-rT})$. For $r = 0.1$ and $T = 1$, the error is approximately $9.5\%$. A longer horizon would reduce this but increase computational cost. We do not provide a rigorous truncation error bound; the finite-horizon problem is treated as a separate (approximate) formulation.
-\end{remark}
-
-\subsubsection{Optimal Quote Recovery from BSDE Controls}
-\label{sec:quotes}
-
-The HJB first-order condition for the ask quote maximises $e^{-\alpha\delta}(\delta + \partial_q V)$ over $\delta > 0$:
-\begin{equation}\label{eq:foc_derivation}
-  \frac{\dd}{\dd \delta}\bigl[ e^{-\alpha\delta}(\delta + \partial_q V) \bigr] = e^{-\alpha\delta}\bigl(1 - \alpha(\delta + \partial_q V)\bigr) = 0
-  \quad \Longrightarrow \quad
-  \delta^{a*} = \frac{1}{\alpha} + \partial_q V.
-\end{equation}
-Analogously, $\delta^{b*} = 1/\alpha - \partial_q V$. Since the BSDE gives $Z_t^q = \sigma_q \cdot \partial_q V$ (not $\partial_q V$ itself), the correct quote formulas are:
-\begin{equation}\label{eq:optimal_quotes}
-  \boxed{\delta_t^{a*} = \frac{1}{\alpha} + \frac{Z_t^q}{\sigma_q}, \qquad
-  \delta_t^{b*} = \frac{1}{\alpha} - \frac{Z_t^q}{\sigma_q},}
-\end{equation}
-where $\sigma_q = \sqrt{\lambda^b f_b + \lambda^a f_a}$ depends on the current quotes and mean-field state.
-
-\begin{remark}[Circular dependency and equilibrium approximation]\label{rem:circular}
-Equation~\eqref{eq:optimal_quotes} is implicit: $\sigma_q$ depends on $\delta^{a*}, \delta^{b*}$, which depend on $\sigma_q$. At $q = 0$, the gradient $\partial_q V = 0$ and both quotes equal $1/\alpha$, giving $\sigma_q^* = \sqrt{2\lambda e^{-1}}$. We use this equilibrium value as a first-order approximation. For large $|q|$, the approximation degrades; a Newton iteration or implicit solve would be more accurate but is not implemented in the current version.
-\end{remark}
-
-\begin{remark}[Constant total spread]
-The total spread $\delta^a + \delta^b = 2/\alpha$ is always constant under these FOCs; only the individual quotes vary with inventory. The financially meaningful quantity is the \emph{quote skew} $\delta^a - \delta^b = 2Z_t^q / \sigma_q$, which captures inventory risk management.
-\end{remark}
-
-\paragraph{Generator.} The BSDE generator, encoding the HJB running cost $\text{rhs of~\eqref{eq:hjb}}$, is:
-\begin{equation}\label{eq:generator}
-  f(t, x, y, z) = -r y - \psi(q) + \lambda^a f_a(\delta^{a*}, \mup) \, \delta^{a*} + \lambda^b f_b(\delta^{b*}, \mup) \, \delta^{b*},
-\end{equation}
-where $\delta^{a*}, \delta^{b*}$ are given by~\eqref{eq:optimal_quotes}. The sign convention: $rV + \psi = \text{profits}$ implies $f = -rY - \psi + \text{profits}$, which is correct for the BSDE $\dd Y = -f \, \dd t + Z \, \dd W$ with terminal condition $Y_T = g(X_T) = -\psi(q_T)$.
-
-\subsection{Jump-Diffusion Formulation (Option B)}
+% ============================================================
+\section{Jump-BSDE Formulation (Primary Method)}
 \label{sec:jump}
 
-Alternatively, we preserve the exact Poisson structure and solve an FBSDE with jumps:
+We preserve the exact Poisson dynamics~\eqref{eq:inventory_discrete} and solve a forward-backward SDE with jumps. The price remains Brownian:
+\begin{equation}\label{eq:forward_price}
+  \dd S_t = \sigma \, \dd W_t^S.
+\end{equation}
+Inventory jumps by $\pm\Delta$ at Poisson times with rates $\nu_t^a = \lambda^a f(\delta_t^a, \mup)$ and $\nu_t^b = \lambda^b f(\delta_t^b, \mup)$.
+
+\paragraph{BSDE with jumps.} By applying It\^o's formula for c\`adl\`ag semimartingales to $Y_t = V(t, S_t, q_t)$, the continuous part gives the Brownian term $Z_t \, \dd W_t^S$ and the jumps contribute:
+\begin{align}
+  &\text{At buy execution (}q \to q + \Delta\text{):} \quad \Delta Y = V(S, q + \Delta) - V(S, q) \eqqcolon U_t^+, \label{eq:jump_up} \\
+  &\text{At sell execution (}q \to q - \Delta\text{):} \quad \Delta Y = V(S, q - \Delta) - V(S, q) \eqqcolon U_t^-. \label{eq:jump_down}
+\end{align}
+Decomposing into compensated Poisson processes $\dd\tilde{N}_t^m = \dd N_t^m - \nu_t^m \, \dd t$:
 \begin{equation}\label{eq:fbsdej}
-  \dd Y_t = -f(t, X_t, Y_t, Z_t, U_t^+, U_t^-) \, \dd t
-    + Z_t \, \dd W_t^S
-    + U_t^+ \, \dd \tilde{N}_t^b
-    + U_t^- \, \dd \tilde{N}_t^a,
+  \dd Y_t = -g(t, X_t, Y_t, Z_t, U_t^+, U_t^-) \, \dd t + Z_t \, \dd W_t^S + U_t^+ \, \dd\tilde{N}_t^b + U_t^- \, \dd\tilde{N}_t^a,
 \end{equation}
-where $\tilde{N}_t^m = N_t^m - \int_0^t \nu_s^m \, \dd s$ are compensated Poisson processes. The jump controls are:
-\begin{itemize}
-  \item $U_t^+ = V(S_t, q_t + \Delta) - V(S_t, q_t)$: value change on buy execution,
-  \item $U_t^- = V(S_t, q_t - \Delta) - V(S_t, q_t)$: value change on sell execution.
-\end{itemize}
-The neural network outputs $(Z_t, U_t^+, U_t^-) \in \R^3$ per time step. The generator is:
+where the generator absorbs the compensator drift:
 \begin{equation}\label{eq:generator_jump}
-  f = -rY - \psi(q) + \nu^a(\delta^a \Delta + U^-) + \nu^b(\delta^b \Delta + U^+),
+  g = -rY - \psi(q) + \nu^a(\delta^{a*}\Delta + U^-) + \nu^b(\delta^{b*}\Delta + U^+).
 \end{equation}
-and the jump-model optimal quotes are $\delta_t^{a*} = 1/\alpha - U_t^- / \Delta$ and $\delta_t^{b*} = 1/\alpha + U_t^+ / \Delta$, which reduce to~\eqref{eq:optimal_quotes} as $\Delta \to 0$.
+The optimal quotes~\eqref{eq:foc_ask}--\eqref{eq:foc_bid} become:
+\begin{equation}\label{eq:optimal_quotes_jump}
+  \boxed{\delta_t^{a*} = \frac{1}{\alpha} - \frac{U_t^-}{\Delta}, \qquad \delta_t^{b*} = \frac{1}{\alpha} - \frac{U_t^+}{\Delta},}
+\end{equation}
+since $U^- = V(q-\Delta) - V(q)$ and $U^+ = V(q+\Delta) - V(q)$ are the exact discrete value increments from~\eqref{eq:jump_up}--\eqref{eq:jump_down}.
+
+\begin{remark}
+The total spread is $\delta^a + \delta^b = 2/\alpha - (U^- + U^+)/\Delta$. Unlike the diffusion surrogate, this is \emph{not} constant --- it depends on the curvature of $V$ through the jump values $U^\pm$. At $q = 0$ with quadratic $V$, the second-order correction is small and the spread is approximately $2/\alpha$.
+\end{remark}
+
+\paragraph{Terminal condition.} We truncate to $[0, T]$ with $g(X_T) = -\psi(q_T)$. Discounting suggests the omitted tail contribution should decay on an $e^{-rT}$ scale under bounded-reward assumptions, but we do not prove a truncation bound for this controlled problem. For $r = 0.1$, $T = 1$, this is a heavily truncated horizon.
+
+% ============================================================
+\section{Diffusion Surrogate Baseline}
+\label{sec:surrogate}
+
+As a computationally convenient comparison, we replace the Poisson inventory with a moment-matched diffusion.
+
+\begin{proposition}[Infinitesimal moment identity]\label{prop:diffusion}
+Over $[t, t + \dd t]$, the Poisson inventory process satisfies $\E[\dd q_t] = (\nu^b - \nu^a)\Delta \, \dd t$ and $\mathrm{Var}[\dd q_t] = (\nu^a + \nu^b)\Delta^2 \, \dd t$.
+\end{proposition}
+
+This is an infinitesimal moment identity and does \emph{not} imply convergence of the associated control problems. Nevertheless, setting $\Delta = 1$:
+\begin{equation}\label{eq:forward_q}
+  \dd q_t = (\lambda^b f_b - \lambda^a f_a) \, \dd t + \sqrt{\lambda^b f_b + \lambda^a f_a} \, \dd W_t^q.
+\end{equation}
+
+\begin{caveat}[What the surrogate does not preserve]\label{cav:surrogate}
+The surrogate solves a \emph{different control problem} from the Cont--Xiong game. Specifically:
+\begin{enumerate}
+  \item[(a)] The nonlocal terms $V(q \pm \Delta) - V(q)$ in the HJB~\eqref{eq:hjb} are replaced by local derivatives, discarding higher-order structure.
+  \item[(b)] The control enters the diffusion coefficient $\sigma_q = \sqrt{\lambda^b f_b + \lambda^a f_a}$, making the surrogate HJB \emph{fully nonlinear} in $\partial_{qq}V$ after optimisation --- not semilinear as required for a standard Feynman--Kac BSDE representation.
+  \item[(c)] The control reconstruction from $Z_t^q$ to quotes involves dividing by $\sigma_q$, which itself depends on the quotes (circular dependency resolved by freezing $\sigma_q$ at equilibrium).
+\end{enumerate}
+The implemented surrogate therefore uses three compounded approximations: moment matching, first-order control ansatz, and frozen diffusion coefficient.
+\end{caveat}
+
+\paragraph{Surrogate PDE.} Using the Taylor expansion $V(q \pm \Delta) \approx V \pm \Delta \partial_q V + \frac{\Delta^2}{2}\partial_{qq}V$ in~\eqref{eq:hjb} with $\Delta = 1$, the surrogate HJB becomes:
+\begin{equation}\label{eq:surrogate_pde}
+  \partial_t V + \frac{\sigma^2}{2}\partial_{SS}V + \sup_{\delta^a, \delta^b}\Bigl[
+    (\lambda^b f_b - \lambda^a f_a)\partial_q V + \frac{1}{2}(\lambda^b f_b + \lambda^a f_a)\partial_{qq}V
+    + \lambda^a f_a \delta^a + \lambda^b f_b \delta^b
+  \Bigr] - rV - \psi = 0.
+\end{equation}
+After substituting the first-order quote ansatz $\delta^{a} = 1/\alpha + \partial_q V$, $\delta^{b} = 1/\alpha - \partial_q V$ (inherited from the discrete FOC, \emph{not} the exact optimiser of~\eqref{eq:surrogate_pde} which would include a $\partial_{qq}V$ correction), the PDE becomes semilinear in $(V, \partial_q V)$ with a frozen diffusion coefficient. Under standard regularity assumptions, a formal Feynman--Kac representation then gives the BSDE:
+\begin{equation}\label{eq:bsde_surrogate}
+  \dd Y_t = -f(t, X_t, Y_t, Z_t) \, \dd t + Z_t^S \, \dd W_t^S + Z_t^q \, \dd W_t^q,
+\end{equation}
+with $Z_t = (\sigma_S \partial_S V, \sigma_q \partial_q V)$ and generator:
+\begin{equation}\label{eq:generator_surrogate}
+  f = -rY - \psi(q) + \lambda^a f_a(\delta^{a*}) \delta^{a*} + \lambda^b f_b(\delta^{b*}) \delta^{b*},
+\end{equation}
+where $\delta^{a*} = 1/\alpha + Z_t^q / \sigma_q^*$ and $\sigma_q^* = \sqrt{2\lambda e^{-1}}$ is the equilibrium diffusion coefficient. This is the object actually solved by the code.
+
+\begin{remark}[Total spread is structurally constant in the surrogate]
+Under the first-order ansatz, $\delta^a + \delta^b = 2/\alpha$ identically. This is an algebraic consequence of the control parameterisation, not a learned quantity. Recovery of $2/\alpha = 1.333$ is therefore a sanity check that the code is not catastrophically broken, not evidence of learning a difficult policy.
+\end{remark}
 
 % ============================================================
 \section{Numerical Method}
@@ -227,38 +212,33 @@ and the jump-model optimal quotes are $\delta_t^{a*} = 1/\alpha - U_t^- / \Delta
 
 \subsection{Deep BSDE Architecture}
 
-The interval $[0, T]$ is discretised into $N_T$ steps with $\Delta t = T / N_T$. The BSDE~\eqref{eq:bsde_dynamics} is approximated by explicit Euler:
-\begin{equation}\label{eq:euler}
-  Y_{n+1} = Y_n - f(t_n, X_n, Y_n, Z_n) \Delta t + Z_n^S \Delta W_n^S + Z_n^q \Delta W_n^q.
+The interval $[0, T]$ is discretised into $N_T$ steps. For the jump model~\eqref{eq:fbsdej}, the Euler scheme is:
+\begin{equation}\label{eq:euler_jump}
+  Y_{n+1} = Y_n - g_n \Delta t + Z_n \Delta W_n^S + U_n^+ \Delta\tilde{N}_n^b + U_n^- \Delta\tilde{N}_n^a,
 \end{equation}
-Each $Z_n$ is parameterised by a feedforward subnet $\phi_n: \R^2 \to \R^2$ with output scaling $Z_n = \phi_n(X_{n+1}; \theta_n) / d$, following \cite{han2018solving}. The initial value $Y_0$ is a trainable scalar. The loss is:
-\begin{equation}\label{eq:loss}
-  \mathcal{L}(\theta) = \E\bigl[ \ell\bigl( Y_{N_T} - g(X_T) \bigr) \bigr],
-\end{equation}
-where $\ell$ is a clipped Huber loss with threshold $C = 50$.
+where $\Delta\tilde{N}_n^m = N_n^m - \nu_n^m \Delta t$ and $N_n^m \sim \mathrm{Poisson}(\nu_n^m \Delta t)$. Each $(Z_n, U_n^+, U_n^-) \in \R^3$ is output by a feedforward subnet $\phi_n(X_{n+1}; \theta_n)$. The use of $X_{n+1}$ (not $X_n$) as input follows the indexing convention of~\cite{han2018solving}: the subnet is evaluated \emph{after} simulating the forward step on $[t_n, t_{n+1}]$, which is notationally equivalent to an adapted control on the slab.
 
-\paragraph{Architecture details.} Each subnet has two hidden layers (32 neurons), batch normalisation (momentum $0.01$), and ReLU activations. One independent subnet per time step ($N_T - 1$ total). Adam optimiser with piecewise LR: $10^{-2}$ (steps $0$--$2000$), $10^{-3}$ ($2000$--$4000$), $10^{-4}$ thereafter. For the FBSDEJ, subnets output $\R^3$ and the Euler step includes compensated Poisson terms $U_n^+ \Delta\tilde{N}_n^b + U_n^- \Delta\tilde{N}_n^a$.
+For the surrogate~\eqref{eq:bsde_surrogate}, subnets output $Z_n \in \R^2$ and no jump terms appear.
+
+$Y_0$ is a trainable scalar. The loss is $\mathcal{L}(\theta) = \E[\ell(Y_{N_T} - g(X_T))]$ with clipped Huber threshold $C = 50$.
+
+\paragraph{Architecture.} Two hidden layers (32 neurons), batch normalisation (momentum $0.01$, following the undocumented trick in~\cite{han2018solving}), ReLU activations. One independent subnet per time step. Adam optimiser with piecewise LR: $10^{-2}$ (steps $0$--$2000$), $10^{-3}$ ($2000$--$4000$), $10^{-4}$ thereafter.
 
 \subsection{Mean-Field Coupling}
 
-We solve the mean-field game by fictitious play~\cite{han2022learning}:
-\begin{enumerate}
-  \item Initialise $\mup$ to the equilibrium spread distribution.
-  \item Solve the representative agent's BSDE given $\mup$ ($K$ gradient steps on~\eqref{eq:loss}).
-  \item Update $\mup$: compute empirical mean inventory $\bar{q}_t$ and mean spread $\bar{\delta}_t$ from batch trajectories.
-  \item Retrain a small feedforward network approximating $h(\mup)$ in~\eqref{eq:exec_prob_mf}, taking $(t, \bar{q}_t, \bar{\delta}_t)$ as input.
-  \item Repeat every $K_\mathrm{drift} = 100$ training steps.
-\end{enumerate}
+We use fictitious play~\cite{han2022learning}: every $K_\mathrm{drift} = 100$ training steps, compute empirical $(\bar{q}_t, \bar{\delta}_t)$ from batch trajectories and retrain a small network $\hat{h}(t, \bar{q}_t, \bar{\delta}_t)$ approximating $h(\mup)$. We do not establish convergence of this loop for the Cont--Xiong model, nor verify uniqueness or sensitivity to initialisation.
 
-\begin{remark}[Mean-field convergence]
-We do not establish convergence of this fictitious play loop for the Cont--Xiong model. In practice, the mean-field statistics ($\bar{q}_t, \bar{\delta}_t$) stabilise after $\sim\!10$ outer iterations, but we have not verified uniqueness of the fixed point or sensitivity to initialisation. This is a known limitation.
-\end{remark}
+% ============================================================
+\section{Finite-Difference Baseline}
+\label{sec:fd}
+
+We solve the exact stationary HJB~\eqref{eq:hjb} on the discrete grid $q \in \{-H, \ldots, H\}$ by policy iteration. Each iteration solves a tridiagonal linear system (policy evaluation) then updates quotes from the new $V$ (policy improvement). Convergence to machine precision occurs in 7 iterations. This provides ground truth for $V(q)$, optimal quotes, and spread across inventory levels.
 
 % ============================================================
 \section{Numerical Results}
 \label{sec:results}
 
-All experiments use the parameters in \Cref{tab:params} unless stated otherwise. Training runs on a single NVIDIA RTX~3090 GPU with float64 precision.
+All experiments use the parameters in \Cref{tab:params}. Training on a single NVIDIA RTX~3090 GPU, float64.
 
 \begin{table}[ht]
 \centering
@@ -268,164 +248,137 @@ All experiments use the parameters in \Cref{tab:params} unless stated otherwise.
 \toprule
 Parameter & Symbol & Value & Description \\
 \midrule
-Price volatility & $\sigma$ & 0.3 & Mid-price Brownian volatility \\
+Price volatility & $\sigma$ & 0.3 & Mid-price (economically inert) \\
 Arrival rates & $\lambda^a, \lambda^b$ & 1.0 & Baseline order arrival \\
 Execution decay & $\alpha$ & 1.5 & Quote sensitivity \\
-Inventory penalty & $\phi$ & 0.01 & Quadratic penalty coefficient \\
-Discount rate & $r$ & 0.1 & Time-value of future profits \\
+Inventory penalty & $\phi$ & 0.01 & Quadratic ($\psi = \phi q^2$) \\
+Discount rate & $r$ & 0.1 & \\
 Time horizon & $T$ & 1.0 & Finite-horizon truncation \\
-Time steps & $N_T$ & 50 & Euler--Maruyama discretisation \\
-Batch size & $B$ & 256 & Training samples per step \\
+Order size & $\Delta$ & 1.0 & Discrete inventory increment \\
+Time steps & $N_T$ & 50 & Euler discretisation \\
+Batch size & $B$ & 256 (continuous), 512 (jump) & \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Continuous Relaxation: Spread Recovery}
-\label{sec:benchmark}
+\subsection{Method Comparison}
+\label{sec:comparison}
 
-\Cref{fig:convergence} shows training convergence over 5000 iterations. The loss decreases to $3.3 \times 10^{-5}$ and $Y_0$ stabilises at $0.456$. The solver recovers the Avellaneda--Stoikov spread $2/\alpha = 1.333$.
+\Cref{tab:comparison} compares all three methods.
 
-We emphasise that this recovery is a \emph{sanity check}, not a demonstration of learning a difficult policy: the FOC~\eqref{eq:foc_derivation} algebraically forces $\delta^a + \delta^b = 2/\alpha$ regardless of the learned $Z_t^q$. The non-trivial content is that $Y_0$ approximates the analytical benchmark. For finite-horizon stationary quoting at $q = 0$, the value is:
-\begin{equation}\label{eq:v0_theory}
-  V_T(0) = \frac{2\lambda e^{-1}/\alpha}{r}\bigl(1 - e^{-rT}\bigr) = 0.467.
-\end{equation}
-The learned $Y_0 = 0.456$ is within 2.4\%, consistent with the $O(e^{-rT}) \approx 9.5\%$ truncation error noted in \Cref{rem:truncation}.
+\begin{table}[ht]
+\centering
+\caption{Value and spread comparison at $q = 0$.}
+\label{tab:comparison}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+Method & $Y_0$ or $V(0)$ & Loss & Spread & Error \\
+\midrule
+FD policy iteration ($T = \infty$) & 4.555 & exact & 1.432 & --- \\
+FD ($T = 1$, rescaled${}^*$) & 0.433 & exact & 1.432 & --- \\
+\textbf{Deep BSDE jump (5000 iter)} & \textbf{0.444} & $8.6 \times 10^{-4}$ & discrete & $+2.5\%$ \\
+Deep BSDE diffusion surrogate (5000 iter) & 0.457 & $3.4 \times 10^{-5}$ & 1.333 & $+5.5\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent ${}^*$Rescaled: $V_T(0) \approx V_\infty(0) \cdot (1 - e^{-rT})$. This is a heuristic correction assuming stationary running payoff, not a proved finite-horizon bound.
+
+\paragraph{Key observations.}
+\begin{enumerate}
+  \item The \textbf{jump model is more accurate} ($2.5\%$ error) than the surrogate ($5.5\%$), consistent with preserving discrete dynamics.
+  \item The \textbf{surrogate distorts the optimal spread}: $1.333$ vs $1.432$ ($6.9\%$ error). This confirms \Cref{cav:surrogate}: moment matching of the state does not preserve optimal controls.
+  \item The \textbf{jump model has $25\times$ higher loss} due to Poisson variance in the compensated increments.
+  \item \textbf{Finite differences are trivially superior} at $d = 2$: 7 iterations to machine precision vs 5000 gradient steps. The deep method's value is potential scalability, not low-dimensional performance.
+\end{enumerate}
+
+\subsection{Convergence and Quoting Strategy}
+
+\Cref{fig:convergence} shows training convergence. \Cref{fig:quoting} shows the learned quoting strategy from the diffusion surrogate: the total spread is identically $2/\alpha$ (structural, not learned), while individual quotes vary with inventory.
 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/convergence.png}
-  \caption{Training convergence (continuous relaxation, 5000 iterations). Left: loss. Right: $Y_0$.}
+  \caption{Training convergence (diffusion surrogate, 5000 iterations).}
   \label{fig:convergence}
 \end{figure}
-
-\subsection{Optimal Quoting and Quote Skew}
-\label{sec:quoting_results}
-
-\Cref{fig:quoting} displays the quoting strategy. The total spread is identically $2/\alpha$ (a mathematical identity, not a learned quantity). The individual quotes vary with inventory: the ask widens when long, the bid tightens, reflecting optimal inventory management.
-
-\Cref{fig:heatmap} shows the quote skew $2Z_t^q / \sigma_q$ over (time, inventory). The approximately linear pattern in $q$ is consistent with the quadratic penalty $\psi = \phi q^2$.
 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/quoting_strategy.png}
-  \caption{Quoting strategy at $t \approx 0$. Total spread is constant at $2/\alpha$; individual quotes vary with inventory.}
+  \caption{Quoting strategy (surrogate). Total spread is structural ($2/\alpha$); individual quotes vary with inventory.}
   \label{fig:quoting}
 \end{figure}
 
+\subsection{Gradient Surface and Value Function}
+
+\Cref{fig:z_surface} shows $Z_t^q(t, q)$, the BSDE control from which quotes are derived. \Cref{fig:value} compares the learned $Y_0$ against the finite-horizon benchmark. \Cref{fig:heatmap} shows the quote skew $\delta^a - \delta^b$.
+
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.85\textwidth]{figures/spread_heatmap.png}
-  \caption{Left: ask half-spread $\delta^a(t, q)$. Right: quote skew $\delta^a - \delta^b = 2Z_t^q / \sigma_q$.}
-  \label{fig:heatmap}
+  \includegraphics[width=0.7\textwidth]{figures/z_gradient_surface_3d.png}
+  \caption{Learned gradient surface $Z_t^q(t, q)$ (surrogate). Approximately planar, consistent with quadratic penalty.}
+  \label{fig:z_surface}
 \end{figure}
-
-\subsection{Value Function and Gradient Surface}
-\label{sec:value_results}
-
-\Cref{fig:value} compares $Y_0$ against the analytical benchmark~\eqref{eq:v0_theory}. \Cref{fig:z_surface} shows the 3D gradient surface $Z_t^q(t, q)$. The approximately planar shape reflects the quadratic penalty; non-linear penalties would produce curved surfaces.
 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/value_function.png}
-  \caption{Value function at $t = 0$ with finite-horizon correction.}
+  \caption{Value function comparison at $t = 0$.}
   \label{fig:value}
 \end{figure}
 
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.7\textwidth]{figures/z_gradient_surface_3d.png}
-  \caption{Learned gradient surface $Z_t^q(t, q)$.}
-  \label{fig:z_surface}
+  \includegraphics[width=0.85\textwidth]{figures/spread_heatmap.png}
+  \caption{Ask quote (left) and quote skew $\delta^a - \delta^b$ (right) over (time, inventory).}
+  \label{fig:heatmap}
 \end{figure}
 
-\subsection{Comparison: Continuous Relaxation vs Jump-Diffusion vs Ground Truth}
-\label{sec:comparison}
-
-We compare three methods: (i)~the finite-difference policy iteration baseline solving the exact discrete-inventory stationary HJB (\Cref{sec:framework}), (ii)~the Deep BSDE solver with continuous relaxation (Option~A), and (iii)~the Deep BSDE solver with exact Poisson jumps (Option~B). \Cref{tab:comparison} summarises the results.
-
-\begin{table}[ht]
-\centering
-\caption{Method comparison at $q = 0$ with default parameters.}
-\label{tab:comparison}
-\begin{tabular}{@{}lllll@{}}
-\toprule
-Method & $Y_0$ or $V(0)$ & Loss & Spread at $q=0$ & Notes \\
-\midrule
-FD policy iteration ($T = \infty$) & 4.555 & exact & 1.432 & Discrete ground truth \\
-FD policy iteration ($T = 1$ corrected) & 0.433 & exact & 1.432 & Finite-horizon approx \\
-Deep BSDE continuous (Option~A, 5000 iter) & 0.457 & $3.4 \times 10^{-5}$ & 1.333 & $+5.5\%$ vs FD \\
-Deep BSDE jump (Option~B, 5000 iter) & 0.444 & $8.6 \times 10^{-4}$ & discrete & $+2.5\%$ vs FD \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\paragraph{Key observations.}
-\begin{enumerate}
-\item The \textbf{jump model (Option~B) produces a more accurate value estimate} ($Y_0 = 0.444$, $2.5\%$ error) than the continuous relaxation ($Y_0 = 0.457$, $5.5\%$ error), consistent with its preservation of the discrete inventory dynamics.
-\item The \textbf{continuous relaxation underestimates the optimal spread}: 1.333 vs the ground-truth 1.432. This $6.9\%$ discrepancy quantifies the cost of the diffusion approximation and confirms the caveat in \Cref{sec:relaxation_caveats} --- moment matching for the state process does not preserve the optimal control.
-\item The \textbf{jump model has $25\times$ higher loss} ($8.6 \times 10^{-4}$ vs $3.4 \times 10^{-5}$) due to the variance of compensated Poisson increments. Larger batch sizes ($B = 512$) partially mitigate this.
-\item The \textbf{finite-difference solver converges in 7 policy iterations} to machine precision, confirming that the 1D problem is computationally trivial. The value of the Deep BSDE approach lies in its scalability to higher dimensions and mean-field coupling, not in solving the 1D case efficiently.
-\end{enumerate}
-
-\subsection{Stress Testing Under Non-Linear Penalties}
+\subsection{Stress Tests Under Non-Linear Penalties}
 \label{sec:stress}
 
-We replace $\psi(q) = \phi q^2$ with non-linear alternatives:
-\begin{equation}\label{eq:penalties}
-  \psi_\mathrm{cubic}(q) = \phi q^2 + \tfrac{\phi}{3}|q|^3, \qquad
-  \psi_\mathrm{exp}(q) = \phi\bigl(e^{\gamma|q|} - 1\bigr).
-\end{equation}
+We test with $\psi_\mathrm{cubic}(q) = \phi q^2 + \frac{\phi}{3}|q|^3$ and $\psi_\mathrm{exp}(q) = \phi(e^{\gamma|q|} - 1)$.
 
-\begin{remark}[Regularity of penalties]\label{rem:regularity}
-The cubic penalty has $\psi' \in C^1$ everywhere (since $(|q|^3)' = 3q|q|$ is differentiable) but $\psi'' = 2\phi + 2\phi|q|$ has a kink at $q = 0$. This does not violate the Lipschitz condition on $\psi'$ but does affect the regularity of the value function. The exponential penalty has $\psi'(q) = \phi\gamma \operatorname{sgn}(q) e^{\gamma|q|}$, which violates the linear growth condition on the generator for large $|q|$, falling outside the standard convergence assumptions of~\cite{han2022learning}.
+\begin{remark}[Regularity]
+The cubic penalty has $\psi' \in C^1$ and $\psi'' = 2\phi + 2\phi|q|$, which is continuous but not differentiable at $q = 0$. The exponential penalty $\psi'(q) = \phi\gamma\operatorname{sgn}(q)e^{\gamma|q|}$ is not classically differentiable at $q = 0$ and violates linear growth for large $|q|$, falling outside the convergence assumptions of~\cite{han2022learning}.
 \end{remark}
 
-\Cref{tab:stress} reports $\max_t |Z_t|$ and the converged loss after 1000 training iterations (single seed).
+\Cref{tab:stress} reports results after 1000 iterations (single seed). \Cref{tab:fd_penalties} provides FD ground truth.
 
 \begin{table}[ht]
 \centering
-\caption{Gradient stability across penalty types (1000 iterations, $\phi = 0.01$, single seed).}
+\caption{Deep BSDE surrogate: stress test (1000 iterations, $\phi = 0.01$, single seed).}
 \label{tab:stress}
 \begin{tabular}{@{}lllll@{}}
 \toprule
-Penalty type & Formula & $Y_0$ & Loss & $\max |Z_t|$ \\
+Penalty & $Y_0$ & Loss & $\max |Z_t|$ \\
 \midrule
-Quadratic & $\phi q^2$ & 0.458 & $1.3 \times 10^{-4}$ & 0.091 \\
-Cubic & $\phi q^2 + \frac{\phi}{3}|q|^3$ & 0.454 & $3.1 \times 10^{-4}$ & 0.150 \\
-Exponential ($\gamma = 1$) & $\phi(e^{|q|} - 1)$ & 0.448 & $1.4 \times 10^{-4}$ & 0.129 \\
+Quadratic & 0.458 & $1.3 \times 10^{-4}$ & 0.091 \\
+Cubic & 0.454 & $3.1 \times 10^{-4}$ & 0.150 \\
+Exponential ($\gamma = 1$) & 0.448 & $1.4 \times 10^{-4}$ & 0.129 \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-The finite-difference baseline also provides ground truth across penalty types (\Cref{tab:fd_penalties}).
 
 \begin{table}[ht]
 \centering
-\caption{Finite-difference ground truth across penalty types (policy iteration, $T = \infty$).}
+\caption{FD ground truth across penalty types ($T = \infty$, policy iteration).}
 \label{tab:fd_penalties}
 \begin{tabular}{@{}llll@{}}
 \toprule
-Penalty type & $V(0)$ & Spread at $q = 0$ & Convergence \\
+Penalty & $V(0)$ & Spread at $q = 0$ \\
 \midrule
-Quadratic & 4.555 & 1.432 & 7 iterations \\
-Cubic & 4.410 & 1.475 & 7 iterations \\
-Exponential ($\gamma = 1$) & 4.384 & 1.483 & 7 iterations \\
+Quadratic & 4.555 & 1.432 \\
+Cubic & 4.410 & 1.475 \\
+Exponential ($\gamma = 1$) & 4.384 & 1.483 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The FD results show that non-linear penalties widen the optimal spread (1.432 $\to$ 1.475 $\to$ 1.483), consistent with increased inventory aversion. The spread widening is modest ($\sim\!3.5\%$) because $\phi = 0.01$ keeps all penalties small relative to execution profits.
-
-At $\phi = 0.01$, all three penalties converge stably. The $Y_0$ values decrease with penalty severity (0.458 $\to$ 0.454 $\to$ 0.448), consistent with the FD ground truth (4.555 $\to$ 4.410 $\to$ 4.384). The cubic penalty produces the highest loss ($3.1 \times 10^{-4}$, roughly $2\times$ worse than quadratic), suggesting its non-smooth Hessian makes the optimisation landscape harder. The gradient magnitudes $\max|Z_t|$ increase from 0.091 to 0.150, indicating more active inventory management under steeper penalties.
-
-\begin{remark}[When does the solver actually break?]
-At this small penalty coefficient ($\phi = 0.01$), the non-linear terms are dominated by execution profits and the solver converges for all three types. The instability predicted by the violation of Lipschitz/linear-growth conditions manifests only at larger $\phi$ or $\gamma$, where the penalty gradients become comparable to or exceed the execution revenue. The accompanying code includes \texttt{find\_breaking\_point.py}, which performs a binary search to identify the onset of divergence. A full characterisation across the $(\phi, \gamma)$ parameter space is deferred to future work.
-\end{remark}
+At $\phi = 0.01$, all penalties converge stably. The $Y_0$ ordering matches FD ground truth. Non-linear penalties widen the FD optimal spread ($1.432 \to 1.483$), consistent with increased inventory aversion. The solver's instability under Lipschitz violations manifests only at larger $\phi$ or $\gamma$, where penalty gradients dominate execution revenue. A systematic characterisation is deferred to future work.
 
 \subsection{Forward Process Diagnostics}
-\label{sec:forward_results}
-
-\Cref{fig:forward} shows sample trajectories and terminal inventory distribution under the continuous relaxation, confirming that the forward SDE produces well-behaved paths.
 
 \begin{figure}[ht]
   \centering
@@ -436,9 +389,9 @@ At this small penalty coefficient ($\phi = 0.01$), the non-linear terms are domi
   \hfill
   \begin{subfigure}[b]{0.48\textwidth}
     \includegraphics[width=\textwidth]{figures/inventory_distribution.png}
-    \caption{Terminal inventory distribution.}
+    \caption{Terminal inventory.}
   \end{subfigure}
-  \caption{Forward SDE diagnostics ($\phi = 0.01$).}
+  \caption{Forward SDE diagnostics (diffusion surrogate, $\phi = 0.01$).}
   \label{fig:forward}
 \end{figure}
 
@@ -446,27 +399,26 @@ At this small penalty coefficient ($\phi = 0.01$), the non-linear terms are domi
 \section{Conclusion}
 \label{sec:conclusion}
 
-We have demonstrated a proof-of-concept integration of the Deep MV-BSDE framework with limit order book market-making. The continuous relaxation produces a tractable surrogate problem whose solution recovers the Avellaneda--Stoikov spread as a sanity check, while the jump-diffusion formulation preserves the original microstructure dynamics at the cost of higher training variance.
+We have implemented a deep jump-BSDE solver for optimal market-making that preserves the discrete Poisson dynamics of the Cont--Xiong dealer market model. Against finite-difference ground truth, the jump formulation achieves $2.5\%$ value accuracy, outperforming a diffusion surrogate ($5.5\%$). The surrogate's $6.9\%$ spread distortion demonstrates that moment matching of the state process does not preserve optimal controls --- a negative result that is itself informative.
 
-The main limitations of this work are: (i)~the continuous relaxation is a heuristic whose effect on the optimal control is not bounded; (ii)~the mean-field coupling is simplified and convergence is not established; (iii)~the stress tests are preliminary. A rigorous treatment would require: weak convergence results for the relaxed control problem, a careful analysis of the fictitious play fixed point under the Cont--Xiong execution probabilities, and systematic ablation studies (multiple seeds, finite-difference comparison in low dimension, sensitivity to all parameters).
+\paragraph{Limitations.} The experiments are at $d = 2$ where finite differences are superior. The mean-field coupling is moment-based, not distribution-dependent. The stress tests are preliminary (single seed, small $\phi$). The terminal condition and truncation are heuristic.
 
-\paragraph{Future work.} Natural extensions include: (i)~common noise via deep signature methods~\cite{hu2025deep}; (ii)~Nash vs Pareto comparison for tacit collusion analysis~\cite{cont2024dynamics}; and (iii)~higher-dimensional multi-asset formulations.
+\paragraph{Future work.} Common noise via deep signatures~\cite{hu2025deep}; Nash vs Pareto comparison~\cite{cont2024dynamics}; higher-dimensional multi-asset formulations; systematic instability characterisation.
+
+\paragraph{Code.} \url{https://github.com/cgarryZA/DeepBSDE}
 
 % ============================================================
-\paragraph{Code availability.} \url{https://github.com/cgarryZA/DeepBSDE}
-
-% ============================================================
-\begin{thebibliography}{20}
-
-\bibitem[Avellaneda and Stoikov(2008)]{avellaneda2008high}
-M.~Avellaneda and S.~Stoikov.
-\newblock High-frequency trading in a limit order book.
-\newblock \emph{Quantitative Finance}, 8(3):217--224, 2008.
+\begin{thebibliography}{15}
 
 \bibitem[Andersson et~al.(2023)]{andersson2023deep}
 K.~Andersson, A.~Gnoatto, M.~Patacca, and A.~Picarelli.
 \newblock A deep solver for {BSDE}s with jumps.
-\newblock \emph{arXiv preprint arXiv:2211.04349}, 2023.
+\newblock \emph{arXiv:2211.04349}, 2023.
+
+\bibitem[Avellaneda and Stoikov(2008)]{avellaneda2008high}
+M.~Avellaneda and S.~Stoikov.
+\newblock High-frequency trading in a limit order book.
+\newblock \emph{Quant.\ Finance}, 8(3):217--224, 2008.
 
 \bibitem[Carmona and Delarue(2018)]{carmona2018probabilistic}
 R.~Carmona and F.~Delarue.
@@ -475,46 +427,33 @@ R.~Carmona and F.~Delarue.
 
 \bibitem[Cont and Xiong(2024)]{cont2024dynamics}
 R.~Cont and W.~Xiong.
-\newblock Dynamics of market making algorithms in dealer markets: Learning and
-  tacit collusion.
-\newblock \emph{Mathematical Finance}, 34:467--521, 2024.
+\newblock Dynamics of market making algorithms in dealer markets.
+\newblock \emph{Math.\ Finance}, 34:467--521, 2024.
 
 \bibitem[E et~al.(2017)]{e2017deep}
 W.~E, J.~Han, and A.~Jentzen.
-\newblock Deep learning-based numerical methods for high-dimensional parabolic
-  partial differential equations and backward stochastic differential equations.
+\newblock Deep learning-based numerical methods for high-dimensional parabolic PDEs and BSDEs.
 \newblock \emph{Commun.\ Math.\ Stat.}, 5(4):349--380, 2017.
 
 \bibitem[El~Karoui et~al.(1997)]{elkaroui1997bsde}
 N.~El~Karoui, S.~Peng, and M.-C.~Quenez.
 \newblock Backward stochastic differential equations in finance.
-\newblock \emph{Mathematical Finance}, 7(1):1--71, 1997.
-
-\bibitem[Germain et~al.(2022)]{germain2022neural}
-M.~Germain, H.~Pham, and X.~Warin.
-\newblock Neural networks-based algorithms for stochastic control and {PDE}s in finance.
-\newblock In \emph{Machine Learning and Data Sciences for Financial Markets}, Cambridge UP, 2022.
+\newblock \emph{Math.\ Finance}, 7(1):1--71, 1997.
 
 \bibitem[Han et~al.(2018)]{han2018solving}
 J.~Han, A.~Jentzen, and W.~E.
-\newblock Solving high-dimensional partial differential equations using deep learning.
+\newblock Solving high-dimensional PDEs using deep learning.
 \newblock \emph{Proc.\ Natl.\ Acad.\ Sci.}, 115(34):8505--8510, 2018.
 
 \bibitem[Han et~al.(2022)]{han2022learning}
 J.~Han, R.~Hu, and J.~Long.
-\newblock Learning high-dimensional {McKean--Vlasov} forward-backward stochastic
-  differential equations with general distribution dependence.
+\newblock Learning high-dimensional {McKean--Vlasov} FBSDEs with general distribution dependence.
 \newblock \emph{SIAM J.\ Numer.\ Anal.}, 60(4):2208--2232, 2022.
 
 \bibitem[Hu et~al.(2025)]{hu2025deep}
 R.~Hu, B.~Jin, M.~Lauri\`ere, and J.~Zhang.
-\newblock Deep signature approach for {McKean--Vlasov} {FBSDE}s in a random environment.
-\newblock \emph{arXiv preprint arXiv:2511.09112}, 2025.
-
-\bibitem[Kloeden and Platen(1992)]{kloeden1992numerical}
-P.~E. Kloeden and E.~Platen.
-\newblock \emph{Numerical Solution of Stochastic Differential Equations}.
-\newblock Springer, 1992.
+\newblock Deep signature approach for {McKean--Vlasov FBSDEs} in a random environment.
+\newblock \emph{arXiv:2511.09112}, 2025.
 
 \bibitem[Pardoux and Peng(1990)]{pardoux1990adapted}
 E.~Pardoux and S.~Peng.

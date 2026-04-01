@@ -52,12 +52,22 @@ class _MeanFieldDriftNet(nn.Module):
 
 @register_equation("contxiong_lob")
 class ContXiongLOB(Equation):
-    """Cont-Xiong LOB model with continuous inventory relaxation.
+    """Diffusion surrogate of the Cont-Xiong dealer market model.
+
+    This is NOT a direct solver for the original Cont-Xiong discrete-inventory
+    game. It solves a heuristic surrogate obtained by:
+    1. Replacing Poisson inventory jumps with a diffusion (moment matching)
+    2. Using a first-order control ansatz for optimal quotes (from discrete FOC)
+    3. Freezing the diffusion coefficient sigma_q at equilibrium
+
+    These approximations make the problem tractable for Deep BSDE but introduce
+    errors. Empirically, the value estimate is within ~5% of FD ground truth but
+    the optimal spread is 1.333 vs the true discrete spread 1.432 (6.9% error).
 
     The mean-field coupling enters through the execution probabilities:
     each market maker's fill rate depends on the population distribution
-    of quotes mu_t. In the simplest form, we track the mean spread as
-    a sufficient statistic of mu_t.
+    of quotes mu_t. We track mean spread and mean inventory as a
+    moment-based proxy for mu_t (not full distribution dependence).
     """
 
     def __init__(self, eqn_config):
@@ -290,20 +300,27 @@ class ContXiongLOB(Equation):
     # ------------------------------------------------------------------
 
     def f_tf(self, t, x, y, z):
-        """Generator: f(t, x, y, z) for the BSDE.
+        """BSDE generator f(t, x, y, z).
 
-        The value function satisfies (in continuous form):
-        rV + psi(q) - lambda_a * f_a(delta_a*) * delta_a*
-                     - lambda_b * f_b(delta_b*) * delta_b* = 0
+        From the surrogate HJB: rV + psi = profits, which gives
+        f = -rY - psi + profits in the BSDE dY = -f dt + Z dW.
 
-        In BSDE form with Y = V, Z = grad V:
-        f(t,x,y,z) = -r*y + psi(q) - execution_profits
+        Note: the optimal quotes used here are a first-order control ansatz
+        inherited from the discrete HJB FOC (delta = 1/alpha +/- dV/dq),
+        NOT the exact optimiser of the surrogate diffusion PDE (which would
+        include a d^2V/dq^2 correction from the control-dependent diffusion
+        coefficient). This is standard practice (cf. Avellaneda-Stoikov) but
+        means the implemented generator is an approximation.
+
+        Note: S_t is economically inert in this model — the value function
+        depends only on (t, q). The price dimension is carried for
+        architectural compatibility but Z^S ≈ 0 in trained models.
 
         Args:
             t: scalar time
-            x: [batch, 2]  (S, q)
+            x: [batch, 2]  (S, q) — only q affects the control
             y: [batch, 1]  value function
-            z: [batch, 2]  gradient (Z^S, Z^q)
+            z: [batch, 2]  BSDE control (Z^S, Z^q) where Z^q = sigma_q * dV/dq
         """
         q = x[:, 1:2]       # [batch, 1]
         z_q = z[:, 1:2]     # [batch, 1] — inventory gradient
