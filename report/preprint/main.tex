@@ -337,7 +337,7 @@ Deep BSDE jump (5000 iter) & 0.444 & $8.6 \times 10^{-4}$ & discrete & $2.8\%$ \
 \begin{enumerate}
   \item Against the \textbf{matched finite-horizon baseline}, the diffusion surrogate achieves $<0.1\%$ value error at $q = 0$. Over the full inventory grid $q \in \{-10, \ldots, 10\}$, the mean absolute value error is $0.076$ and the maximum is $0.45$ (at extreme inventories where $V \approx 0$). The near-perfect $q = 0$ match is much stronger than the previously reported $5.5\%$, which was an artefact of comparing against a heuristically rescaled stationary solution.
   \item The \textbf{surrogate spread} ($1.333$) differs from the FD spread ($1.370$) by $2.7\%$, quantifying the cost of replacing discrete value increments with local derivatives.
-  \item The \textbf{jump model} ($Y_0 = 0.444$, $2.8\%$ error) is less accurate in value than the surrogate. This is likely due to the higher variance of compensated Poisson increments requiring more training iterations.
+  \item The \textbf{jump model} ($Y_0 = 0.444$, $2.8\%$ error) is less accurate in value than the surrogate. Across seeds ($Y_0 = 0.445 \pm 0.000$), the jump model exhibits consistently higher terminal loss and gradient magnitude than the surrogate, consistent with noisier training dynamics from compensated Poisson increments.
   \item \textbf{Forward policy simulation} (\Cref{sec:simulation}) shows the surrogate policy achieves P\&L within $0.7\%$ of the FD-optimal policy (Sharpe $0.82$ vs $0.81$), confirming the learned policy is economically functional.
   \item \textbf{Finite differences are trivially superior} at $d = 2$. The deep method's value is potential scalability.
 \end{enumerate}
@@ -541,7 +541,7 @@ $T$ & FD $V(0,0)$ & BSDE $Y_0$ & FD spread & Error \\
 \end{tabular}
 \end{table}
 
-The solver is accurate ($<0.3\%$) for $T \le 2$ but fails at $T = 5$ ($37\%$ error), likely because the fixed discretisation $N_T = 50$ gives $\Delta t = 0.1$ (too coarse for the longer horizon) and 1000 training iterations are insufficient. The FD spread converges toward the stationary value $1.432$ as $T$ increases, confirming the finite-horizon truncation is the source of the spread difference noted in \Cref{sec:comparison}.
+The solver is accurate ($<0.3\%$) for $T \le 2$ but fails at $T = 5$ ($37\%$ error). At $T = 5$ with $N_T = 50$, the step size $\Delta t = 0.1$ is large enough that the explicit Euler BSDE discretisation error accumulates significantly over 50 steps, and the training variance grows with the longer trajectory. The FD spread converges toward the stationary value $1.432$ as $T$ increases, confirming the finite-horizon truncation is the source of the spread difference noted in \Cref{sec:comparison}.
 
 \paragraph{Mean-field ablation.} Comparing Type~1 (no coupling) and Type~3 (moment-proxy fictitious play), the multi-seed results are $Y_0 = 0.4572 \pm 0.0002$ vs $0.4573 \pm 0.0011$. The mean-field proxy has \emph{no measurable effect} at $\phi = 0.01$, confirming that the current moment-based coupling is too coarse to influence the control in this parameter regime. Genuine distribution-dependent coupling is needed to make the mean-field interaction substantive.
 
