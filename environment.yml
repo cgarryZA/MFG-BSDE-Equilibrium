@@ -1,0 +1,12 @@
+name: deepbsde
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+dependencies:
+  - python>=3.10
+  - pytorch>=2.0
+  - pytorch-cuda=12.4
+  - numpy
+  - matplotlib
+  - pip
