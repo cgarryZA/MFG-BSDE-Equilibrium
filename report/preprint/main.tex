@@ -353,17 +353,17 @@ Method & $Y_0$ or $V(0)$ & Loss & Spread at $q=0$ & Notes \\
 \midrule
 FD policy iteration ($T = \infty$) & 4.555 & exact & 1.432 & Discrete ground truth \\
 FD policy iteration ($T = 1$ corrected) & 0.433 & exact & 1.432 & Finite-horizon approx \\
-Deep BSDE continuous (Option~A) & 0.456 & $2.4 \times 10^{-5}$ & 1.333 & $+5.3\%$ vs FD \\
-Deep BSDE jump (Option~B) & 0.449 & $2.4 \times 10^{-3}$ & discrete & $+3.7\%$ vs FD \\
+Deep BSDE continuous (Option~A, 5000 iter) & 0.457 & $3.4 \times 10^{-5}$ & 1.333 & $+5.5\%$ vs FD \\
+Deep BSDE jump (Option~B, 5000 iter) & 0.444 & $8.6 \times 10^{-4}$ & discrete & $+2.5\%$ vs FD \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Key observations.}
 \begin{enumerate}
-\item The \textbf{jump model (Option~B) produces a more accurate value estimate} ($Y_0 = 0.449$, $3.7\%$ error) than the continuous relaxation ($Y_0 = 0.456$, $5.3\%$ error), consistent with its preservation of the discrete inventory dynamics.
+\item The \textbf{jump model (Option~B) produces a more accurate value estimate} ($Y_0 = 0.444$, $2.5\%$ error) than the continuous relaxation ($Y_0 = 0.457$, $5.5\%$ error), consistent with its preservation of the discrete inventory dynamics.
 \item The \textbf{continuous relaxation underestimates the optimal spread}: 1.333 vs the ground-truth 1.432. This $6.9\%$ discrepancy quantifies the cost of the diffusion approximation and confirms the caveat in \Cref{sec:relaxation_caveats} --- moment matching for the state process does not preserve the optimal control.
-\item The \textbf{jump model has $100\times$ higher loss} ($2.4 \times 10^{-3}$ vs $2.4 \times 10^{-5}$) due to the variance of compensated Poisson increments. Larger batch sizes ($B = 512$) partially mitigate this.
+\item The \textbf{jump model has $25\times$ higher loss} ($8.6 \times 10^{-4}$ vs $3.4 \times 10^{-5}$) due to the variance of compensated Poisson increments. Larger batch sizes ($B = 512$) partially mitigate this.
 \item The \textbf{finite-difference solver converges in 7 policy iterations} to machine precision, confirming that the 1D problem is computationally trivial. The value of the Deep BSDE approach lies in its scalability to higher dimensions and mean-field coupling, not in solving the 1D case efficiently.
 \end{enumerate}
 
