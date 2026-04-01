@@ -199,10 +199,16 @@ def plot_spread_heatmap(config, bsde, model, out_dir):
     t_vals = np.array([bsde.t_grid[idx] for idx in t_indices])
 
     fig, ax = plt.subplots(figsize=(8, 5))
+    # Use tight vmin/vmax centered on equilibrium to show actual variation
+    equilibrium = 2.0 / bsde.alpha
+    spread_min = np.min(spread_grid)
+    spread_max = np.max(spread_grid)
+    # Symmetric deviation from equilibrium for colorbar
+    dev = max(abs(spread_max - equilibrium), abs(spread_min - equilibrium), 0.01)
     im = ax.imshow(
         spread_grid.T, aspect="auto", origin="lower",
         extent=[t_vals[0], t_vals[-1], q_range[0], q_range[-1]],
-        cmap="RdYlBu_r",
+        cmap="RdYlBu_r", vmin=equilibrium - dev, vmax=equilibrium + dev,
     )
     cbar = plt.colorbar(im, ax=ax)
     cbar.set_label("Bid-ask spread")
@@ -220,27 +226,68 @@ def plot_spread_heatmap(config, bsde, model, out_dir):
 
 
 def plot_value_function(config, bsde, model, out_dir):
-    """Plot V(q) at t=0 for a range of inventories."""
+    """Plot V(q) at t=0 by running the full BSDE forward pass at each q.
+
+    For each initial inventory q, we set Y_0 = model.y_init (same for all q),
+    simulate the forward SDE, and propagate Y through the BSDE. The resulting
+    Y_T should match g(X_T). The quality of match tells us V(q).
+
+    Simpler approach: use the subnet at t=0 to get Z(0, S, q), then compute
+    the implied value via the HJB: rV = profits(q) - psi(q).
+    """
     model.eval()
     q_range = np.linspace(-5, 5, 100)
-    values = []
-
-    for q in q_range:
-        # Approximate V(q) using the terminal condition and Y_0
-        # In a fully trained model, Y_0 + integral of generator gives V(q)
-        # Simple proxy: -phi * q^2 (the terminal penalty shape)
-        values.append(-bsde.phi * q ** 2)
-
-    # If model is trained, Y_0 gives V at q=0
     y0 = model.y_init.item()
 
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.plot(q_range, values, "b-", linewidth=1.5, label="Terminal penalty $-\\phi q^2$")
-    ax.plot(0, y0, "ro", markersize=8, label=f"Learned $Y_0 = {y0:.4f}$")
-    ax.set_xlabel("Inventory $q$")
-    ax.set_ylabel("Value $V(q)$")
-    ax.set_title("Value Function Shape")
-    ax.legend()
+    # Method: at stationarity, rV(q) = profits(q) - psi(q)
+    # profits(q) depends on optimal quotes which depend on Z^q(q)
+    values_hjb = []
+    values_terminal = []
+
+    for q in q_range:
+        x = torch.tensor([[bsde.s_init, q]], dtype=torch.float64)
+
+        # Get Z from first subnet (t ≈ 0)
+        if len(model.subnet) > 0:
+            with torch.no_grad():
+                z = model.subnet[0](x) / bsde.dim
+            z_q = z[0, 1].item()
+        else:
+            z_q = 0.0
+
+        # Optimal quotes
+        delta_a = 1.0 / bsde.alpha + z_q
+        delta_b = 1.0 / bsde.alpha - z_q
+
+        # Execution rates and profits
+        f_a = np.exp(-bsde.alpha * delta_a) * bsde.lambda_a
+        f_b = np.exp(-bsde.alpha * delta_b) * bsde.lambda_b
+        profits = f_a * delta_a + f_b * delta_b
+        psi = bsde.phi * q ** 2
+
+        # HJB: rV = profits - psi → V = (profits - psi) / r
+        v_hjb = (profits - psi) / bsde.discount_rate
+        values_hjb.append(v_hjb)
+        values_terminal.append(-psi)
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.plot(q_range, values_hjb, "b-", linewidth=2.0,
+            label="$V(q) = (\\mathrm{profits} - \\psi) / r$ (HJB)")
+    ax.plot(q_range, values_terminal, "k--", linewidth=1.0, alpha=0.5,
+            label="Terminal penalty $-\\phi q^2$")
+    ax.plot(0, y0, "ro", markersize=10, zorder=5,
+            label=f"Learned $Y_0 = {y0:.4f}$")
+
+    # Mark the theoretical V(0) = profits(0) / r
+    f_eq = np.exp(-1.0) * bsde.lambda_a  # f(1/alpha) at q=0
+    v0_theory = 2 * f_eq * (1.0 / bsde.alpha) / bsde.discount_rate
+    ax.plot(0, v0_theory, "g^", markersize=10, zorder=5,
+            label=f"$V(0)$ theory $= {v0_theory:.4f}$")
+
+    ax.set_xlabel("Inventory $q$", fontsize=12)
+    ax.set_ylabel("Value $V(q)$", fontsize=12)
+    ax.set_title("Value Function: Learned vs HJB", fontsize=13)
+    ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
