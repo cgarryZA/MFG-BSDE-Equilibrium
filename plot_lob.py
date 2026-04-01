@@ -239,10 +239,13 @@ def plot_value_function(config, bsde, model, out_dir):
     q_range = np.linspace(-5, 5, 100)
     y0 = model.y_init.item()
 
-    # Method: at stationarity, rV(q) = profits(q) - psi(q)
-    # profits(q) depends on optimal quotes which depend on Z^q(q)
-    values_hjb = []
+    # Finite-horizon value: V_T(q) = (profits - psi) * (1 - e^{-rT}) / r
+    # NOT the infinite-horizon V = (profits - psi) / r
+    values_finite = []
     values_terminal = []
+    r = bsde.discount_rate
+    T = bsde.total_time
+    finite_factor = (1.0 - np.exp(-r * T)) / r  # discounting over [0, T]
 
     for q in q_range:
         x = torch.tensor([[bsde.s_init, q]], dtype=torch.float64)
@@ -265,24 +268,24 @@ def plot_value_function(config, bsde, model, out_dir):
         profits = f_a * delta_a + f_b * delta_b
         psi = bsde.phi * q ** 2
 
-        # HJB: rV = profits - psi → V = (profits - psi) / r
-        v_hjb = (profits - psi) / bsde.discount_rate
-        values_hjb.append(v_hjb)
+        # Finite-horizon value: running payoff discounted over [0,T] + terminal
+        v_finite = (profits - psi) * finite_factor + (-psi) * np.exp(-r * T)
+        values_finite.append(v_finite)
         values_terminal.append(-psi)
 
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.plot(q_range, values_hjb, "b-", linewidth=2.0,
-            label="$V(q) = (\\mathrm{profits} - \\psi) / r$ (HJB)")
+    ax.plot(q_range, values_finite, "b-", linewidth=2.0,
+            label=f"$V_T(q)$ (finite horizon, $T={T}$)")
     ax.plot(q_range, values_terminal, "k--", linewidth=1.0, alpha=0.5,
             label="Terminal penalty $-\\phi q^2$")
     ax.plot(0, y0, "ro", markersize=10, zorder=5,
             label=f"Learned $Y_0 = {y0:.4f}$")
 
-    # Mark the theoretical V(0) = profits(0) / r
-    f_eq = np.exp(-1.0) * bsde.lambda_a  # f(1/alpha) at q=0
-    v0_theory = 2 * f_eq * (1.0 / bsde.alpha) / bsde.discount_rate
-    ax.plot(0, v0_theory, "g^", markersize=10, zorder=5,
-            label=f"$V(0)$ theory $= {v0_theory:.4f}$")
+    # Finite-horizon V(0) = profits(0) * (1 - e^{-rT}) / r
+    f_eq = np.exp(-1.0) * bsde.lambda_a
+    v0_finite = 2 * f_eq * (1.0 / bsde.alpha) * finite_factor
+    ax.plot(0, v0_finite, "g^", markersize=10, zorder=5,
+            label=f"$V_T(0)$ theory $= {v0_finite:.4f}$")
 
     ax.set_xlabel("Inventory $q$", fontsize=12)
     ax.set_ylabel("Value $V(q)$", fontsize=12)
