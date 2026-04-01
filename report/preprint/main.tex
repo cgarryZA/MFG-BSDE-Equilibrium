@@ -338,15 +338,34 @@ The learned $Y_0 = 0.456$ is within 2.4\%, consistent with the $O(e^{-rT}) \appr
   \label{fig:z_surface}
 \end{figure}
 
-\subsection{Jump-Diffusion Formulation}
-\label{sec:jump_results}
+\subsection{Comparison: Continuous Relaxation vs Jump-Diffusion vs Ground Truth}
+\label{sec:comparison}
 
-% PLACEHOLDER: results from running jump model (3000 iterations)
-% Will include: convergence curve, comparison with continuous relaxation,
-% training variance comparison, quote recovery from U+/U-
-\textbf{[Results pending: jump-diffusion model training in progress.]}
+We compare three methods: (i)~the finite-difference policy iteration baseline solving the exact discrete-inventory stationary HJB (\Cref{sec:framework}), (ii)~the Deep BSDE solver with continuous relaxation (Option~A), and (iii)~the Deep BSDE solver with exact Poisson jumps (Option~B). \Cref{tab:comparison} summarises the results.
 
-Preliminary observations from short training runs: the FBSDEJ converges more slowly than the continuous relaxation, with higher variance in the loss due to the Poisson jumps. Larger batch sizes ($B = 512$) are needed to reduce this variance. The inventory process correctly produces discrete values $q_T \in \{-H, \ldots, H\}$.
+\begin{table}[ht]
+\centering
+\caption{Method comparison at $q = 0$ with default parameters.}
+\label{tab:comparison}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+Method & $Y_0$ or $V(0)$ & Loss & Spread at $q=0$ & Notes \\
+\midrule
+FD policy iteration ($T = \infty$) & 4.555 & exact & 1.432 & Discrete ground truth \\
+FD policy iteration ($T = 1$ corrected) & 0.433 & exact & 1.432 & Finite-horizon approx \\
+Deep BSDE continuous (Option~A) & 0.456 & $2.4 \times 10^{-5}$ & 1.333 & $+5.3\%$ vs FD \\
+Deep BSDE jump (Option~B) & 0.449 & $2.4 \times 10^{-3}$ & discrete & $+3.7\%$ vs FD \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Key observations.}
+\begin{enumerate}
+\item The \textbf{jump model (Option~B) produces a more accurate value estimate} ($Y_0 = 0.449$, $3.7\%$ error) than the continuous relaxation ($Y_0 = 0.456$, $5.3\%$ error), consistent with its preservation of the discrete inventory dynamics.
+\item The \textbf{continuous relaxation underestimates the optimal spread}: 1.333 vs the ground-truth 1.432. This $6.9\%$ discrepancy quantifies the cost of the diffusion approximation and confirms the caveat in \Cref{sec:relaxation_caveats} --- moment matching for the state process does not preserve the optimal control.
+\item The \textbf{jump model has $100\times$ higher loss} ($2.4 \times 10^{-3}$ vs $2.4 \times 10^{-5}$) due to the variance of compensated Poisson increments. Larger batch sizes ($B = 512$) partially mitigate this.
+\item The \textbf{finite-difference solver converges in 7 policy iterations} to machine precision, confirming that the 1D problem is computationally trivial. The value of the Deep BSDE approach lies in its scalability to higher dimensions and mean-field coupling, not in solving the 1D case efficiently.
+\end{enumerate}
 
 \subsection{Stress Testing Under Non-Linear Penalties}
 \label{sec:stress}
@@ -361,22 +380,41 @@ We replace $\psi(q) = \phi q^2$ with non-linear alternatives:
 The cubic penalty has $\psi' \in C^1$ everywhere (since $(|q|^3)' = 3q|q|$ is differentiable) but $\psi'' = 2\phi + 2\phi|q|$ has a kink at $q = 0$. This does not violate the Lipschitz condition on $\psi'$ but does affect the regularity of the value function. The exponential penalty has $\psi'(q) = \phi\gamma \operatorname{sgn}(q) e^{\gamma|q|}$, which violates the linear growth condition on the generator for large $|q|$, falling outside the standard convergence assumptions of~\cite{han2022learning}.
 \end{remark}
 
-\Cref{tab:stress} reports $\max_t |Z_t|$ after 50 training iterations. These numbers serve as a preliminary signal, not as rigorous evidence of failure thresholds.
+\Cref{tab:stress} reports $\max_t |Z_t|$ and the converged loss after 1000 training iterations (single seed).
 
 \begin{table}[ht]
 \centering
-\caption{Gradient magnitudes across penalty types (50 iterations, $\phi = 0.01$, single seed).}
+\caption{Gradient stability across penalty types (1000 iterations, $\phi = 0.01$, single seed).}
 \label{tab:stress}
-\begin{tabular}{@{}llll@{}}
+\begin{tabular}{@{}lllll@{}}
 \toprule
-Penalty type & Formula & $\max |Z_t|$ & Observation \\
+Penalty type & Formula & $Y_0$ & Loss & $\max |Z_t|$ \\
 \midrule
-Quadratic & $\phi q^2$ & 1.49 & Stable \\
-Cubic & $\phi q^2 + \frac{\phi}{3}|q|^3$ & 1.80 & Moderate increase \\
-Exponential ($\gamma = 1$) & $\phi(e^{|q|} - 1)$ & 2.43 & Largest gradient \\
+Quadratic & $\phi q^2$ & 0.458 & $1.3 \times 10^{-4}$ & 0.091 \\
+Cubic & $\phi q^2 + \frac{\phi}{3}|q|^3$ & \multicolumn{3}{c}{\emph{(pending)}} \\
+Exponential ($\gamma = 1$) & $\phi(e^{|q|} - 1)$ & \multicolumn{3}{c}{\emph{(pending)}} \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+The finite-difference baseline also provides ground truth across penalty types (\Cref{tab:fd_penalties}).
+
+\begin{table}[ht]
+\centering
+\caption{Finite-difference ground truth across penalty types (policy iteration, $T = \infty$).}
+\label{tab:fd_penalties}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Penalty type & $V(0)$ & Spread at $q = 0$ & Convergence \\
+\midrule
+Quadratic & 4.555 & 1.432 & 7 iterations \\
+Cubic & 4.410 & 1.475 & 7 iterations \\
+Exponential ($\gamma = 1$) & 4.384 & 1.483 & 7 iterations \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The FD results show that non-linear penalties widen the optimal spread (1.432 $\to$ 1.475 $\to$ 1.483), consistent with increased inventory aversion. The spread widening is modest ($\sim\!3.5\%$) because $\phi = 0.01$ keeps all penalties small relative to execution profits.
 
 A proper characterisation of the failure threshold requires longer training runs, multiple random seeds, and a principled divergence criterion. The accompanying code includes \texttt{find\_breaking\_point.py}, which performs a binary search over $\gamma$ (or $\phi$) to identify the loss divergence onset, but full results are deferred to a future study.
 
