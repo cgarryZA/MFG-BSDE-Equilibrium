@@ -520,6 +520,29 @@ Non-linear penalties also widen the stationary FD optimal spread ($1.432 \to 1.4
 
 We have implemented two deep BSDE solvers for optimal market-making in the Cont--Xiong dealer market model: a jump-aware formulation (FBSDEJ) preserving discrete Poisson dynamics, and a diffusion surrogate for comparison. Against a matched finite-horizon finite-difference baseline, the surrogate achieves $<0.1\%$ value error at $q = 0$ and its learned policy captures $99.3\%$ of the FD-optimal P\&L in forward simulation. However, the surrogate's structurally constant spread ($2/\alpha = 1.333$) differs from the FD spread ($1.370$) by $2.7\%$, demonstrating that \emph{accurate value approximation does not guarantee accurate control recovery} --- the diffusion surrogate solves a different control problem from the original discrete game. The jump model ($2.8\%$ value error) is numerically less accurate due to higher Poisson training variance but preserves the discrete control structure.
 
+\subsection{Horizon Sensitivity}
+\label{sec:horizon}
+
+To empirically justify the finite-horizon truncation, we compare FD and BSDE at several horizons (\Cref{tab:horizon}).
+
+\begin{table}[ht]
+\centering
+\caption{Horizon sensitivity: matched FD vs Deep BSDE surrogate (1000 iterations).}
+\label{tab:horizon}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+$T$ & FD $V(0,0)$ & BSDE $Y_0$ & FD spread & Error \\
+\midrule
+0.5 & 0.235 & 0.236 & 1.362 & 0.3\% \\
+1.0 & 0.457 & 0.457 & 1.370 & 0.1\% \\
+2.0 & 0.866 & 0.864 & 1.383 & 0.2\% \\
+5.0 & 1.852 & 1.172 & 1.410 & 36.7\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The solver is accurate ($<0.3\%$) for $T \le 2$ but fails at $T = 5$ ($37\%$ error), likely because the fixed discretisation $N_T = 50$ gives $\Delta t = 0.1$ (too coarse for the longer horizon) and 1000 training iterations are insufficient. The FD spread converges toward the stationary value $1.432$ as $T$ increases, confirming the finite-horizon truncation is the source of the spread difference noted in \Cref{sec:comparison}.
+
 \paragraph{Mean-field ablation.} Comparing Type~1 (no coupling) and Type~3 (moment-proxy fictitious play), the multi-seed results are $Y_0 = 0.4572 \pm 0.0002$ vs $0.4573 \pm 0.0011$. The mean-field proxy has \emph{no measurable effect} at $\phi = 0.01$, confirming that the current moment-based coupling is too coarse to influence the control in this parameter regime. Genuine distribution-dependent coupling is needed to make the mean-field interaction substantive.
 
 \paragraph{Limitations.} The experiments are at $d = 2$ (effectively $d = 1$ after the reduction in \Cref{prop:1d}) where finite differences are superior. The mean-field coupling is moment-based and, as the ablation shows, currently inactive at the tested parameters. The stress tests use 2 seeds and 500 iterations. The terminal condition and truncation are heuristic.
