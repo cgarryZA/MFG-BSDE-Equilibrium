@@ -41,6 +41,9 @@ class EqnConfig:
     law_encoder_type: str = "moments"
     law_embed_dim: int = 16
     n_bins: int = 20
+    # Adverse selection
+    eta: float = 0.0  # adverse selection strength (0 = none)
+    signal_decay: float = 0.9  # EMA decay for price signal
 
 
 @dataclass

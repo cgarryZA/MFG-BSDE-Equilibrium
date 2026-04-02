@@ -822,7 +822,7 @@ class ContXiongLOBModel(nn.Module):
         self.bsde = bsde
         self.device = device or torch.device("cpu")
         dtype = torch.float64
-        dim = 2  # (S, q)
+        dim = bsde.dim  # 2 for base, 3 for adverse selection
 
         self.y_init = nn.Parameter(
             torch.tensor(
