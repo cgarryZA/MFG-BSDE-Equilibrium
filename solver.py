@@ -1007,6 +1007,14 @@ class ContXiongLOBSolver:
             self.optimizer.step()
             self.scheduler.step()
 
+            # Progress indicator (lightweight, always shown)
+            if step > 0 and step % 100 == 0:
+                import sys as _sys
+                total = self.opt_config.num_iterations
+                pct = step * 100 // total
+                _sys.stderr.write(f"\r  [{pct:3d}%] step {step}/{total}")
+                _sys.stderr.flush()
+
             # Extract mean_y for logging
             mean_y_train = np.array([m.item() for m in mean_y])
 
@@ -1510,6 +1518,14 @@ class ContXiongLOBMVSolver:
             loss.backward()
             self.optimizer.step()
             self.scheduler.step()
+
+            # Progress indicator
+            if step > 0 and step % 100 == 0:
+                import sys as _sys
+                total = self.opt_config.num_iterations
+                pct = step * 100 // total
+                _sys.stderr.write(f"\r  [{pct:3d}%] step {step}/{total}")
+                _sys.stderr.flush()
 
             mean_y_train = np.array([m.item() for m in mean_y])
 
