@@ -72,7 +72,7 @@ No published work applies the Deep BSDE framework to limit order book market-mak
 
 \paragraph{Scope and limitations.}
 \begin{itemize}
-  \item The experiments are at $d = 2$ (price + inventory). At this dimension, finite differences are trivially superior. The value of the deep method lies in potential scalability, not demonstrated superiority.
+  \item The experiments are at $d = 2$ (price + inventory). We study the method first in a deliberately controlled setting with exact finite-difference ground truth, so that approximation error in the BSDE solver and in policy recovery can be isolated cleanly before moving to higher-dimensional models where such benchmarks are unavailable. The purpose of the present low-dimensional experiment is validation and diagnosis, not computational advantage over finite differences.
   \item The mean-field coupling uses a moment-based proxy for the population distribution, not full distribution dependence.
   \item The diffusion surrogate solves a \emph{different control problem} from the original game. We present it as a diagnostic baseline, not as a solver for the Cont--Xiong model.
   \item The price process $S_t$ is economically inert: with driftless price, execution rates independent of $S$, and linear mark-to-market terminal wealth $q_T S_T$, the value function decomposes as $V(t, x, s, q) = x + qs + \phi(t, q)$, reducing the control problem to one dimension in $q$. Making $S$ genuinely active would require price-dependent execution (adverse selection) or a predictive signal, which we leave to future work.
@@ -397,7 +397,7 @@ Deep BSDE jump ($0.446 \pm 0.002$, 5 seeds) & 0.446 & $2.6 \times 10^{-5}$ & dis
 \subsection{Forward Policy Simulation}
 \label{sec:simulation}
 
-To validate that the learned control is economically functional (not merely a good PDE approximation), we simulate 5000 market-making paths under both the Deep BSDE policy and the FD-optimal policy using the same random seed.
+To validate that the learned control is economically functional (not merely a good PDE approximation), we simulate 5000 market-making paths under both the Deep BSDE surrogate policy and the FD-optimal policy using the same random seed. Critically, the forward simulation uses \emph{true Poisson jump dynamics} for execution, not the diffusion approximation under which the surrogate was trained. This cross-dynamics evaluation isolates the cost of deploying a surrogate-trained policy under the original discrete execution mechanism.
 
 \begin{table}[ht]
 \centering
@@ -416,7 +416,7 @@ Mean spread & 1.333 & 1.368 \\
 \end{tabular}
 \end{table}
 
-The BSDE policy performs within $0.7\%$ of the FD-optimal policy in mean P\&L, with comparable inventory risk and a marginally higher Sharpe ratio. The spread difference ($1.333$ vs $1.368$) reflects the structural constant-spread property of the surrogate, but in realised performance this has minimal economic impact at $\phi = 0.01$.
+Despite being trained under diffusion dynamics and evaluated under Poisson jumps, the surrogate policy performs within $0.7\%$ of the FD-optimal policy in mean P\&L, with comparable inventory risk and a marginally higher Sharpe ratio. The spread difference ($1.333$ vs $1.368$) reflects the structural constant-spread property of the surrogate, but in realised P\&L under true jump execution this has minimal economic impact at $\phi = 0.01$. This suggests the surrogate's policy is robust to the dynamics mismatch in this benign parameter regime, though the gap would likely widen under stronger inventory penalties or adverse selection.
 
 \subsection{Stress Tests Under Non-Linear Penalties}
 \label{sec:stress}
