@@ -81,3 +81,23 @@ This is genuine distribution-dependent optimal control:
 - Wider population → fiercer competition → narrower ask, wider bid
 - The market maker adapts strategy based on population inventory distribution
 - Not just a level shift — the entire quoting strategy changes shape
+
+## Finding 6: Encoder robustness confirmed
+
+QuantileEncoder produces the same qualitative pattern as MomentEncoder:
+- h(narrow) = 0.449, h(medium) = 0.345, h(wide) = 0.125
+- 3.6x variation (vs 4x for MomentEncoder)
+- Distribution sensitivity is NOT encoder-specific
+
+## Finding 7: MV coupling active at ALL tested phi values
+
+| phi  | h(narrow) | h(wide) | Gap   |
+|------|-----------|---------|-------|
+| 0.01 | 0.353     | 0.100   | 0.253 |
+| 0.05 | 0.453     | 0.100   | 0.353 |
+| 0.10 | 0.479     | 0.100   | 0.379 |
+| 0.50 | 0.169     | 0.100   | 0.069 |
+
+The earlier "no effect at phi=0.01" was entirely due to bugs (f_tf + BN).
+With corrected architecture, MV coupling is measurable even at phi=0.01.
+At phi=0.5, the model struggles (Y0 negative) suggesting instability.
