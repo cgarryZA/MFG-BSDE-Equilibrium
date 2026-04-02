@@ -7,6 +7,7 @@
 \usepackage{geometry}
 \geometry{margin=2.5cm}
 \usepackage{graphicx}
+\graphicspath{{../../plots/}}
 \usepackage{hyperref}
 \usepackage{cleveref}
 \usepackage{booktabs}
@@ -194,8 +195,12 @@ Wide (std 3.0)   & 0.107 & $-0.285$ & 0.334 & 0.999 & 0.065 & 0.024 \\
 
 The competitive factor varies by $4\times$. Quotes shift by $2\times$. Under wide populations, the market maker narrows the ask (aggressive selling) and widens the bid (defensive), consistent with fierce competition for executions.
 
-% STUB: Insert figure plots/mv_control_sensitivity.png here
-% Shows delta_a(q), delta_b(q), skew(q), nu(q) for narrow/medium/wide
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.95\textwidth]{mv_control_sensitivity.png}
+  \caption{Optimal quotes, skew, and execution intensities vs inventory for three population shapes. Under wide populations, the ask narrows aggressively while the bid widens, and execution rates drop on the bid side. Quote skew reverses sign at large inventory under competitive pressure.}
+  \label{fig:control_sensitivity}
+\end{figure}
 
 \subsection{Encoder Robustness}
 
@@ -215,6 +220,13 @@ DeepSets       & 0.427 & 0.427 & 0.427 \\
 \end{table}
 
 Both handcrafted encoders produce qualitatively identical results ($3.6$--$4\times$ variation). DeepSets produces constant $h$, confirming the representation collapse is the bottleneck, not the coupling.
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{encoder_comparison.png}
+  \caption{Competitive factor $h$ by encoder and population shape. MomentEncoder and QuantileEncoder discriminate; DeepSets does not.}
+  \label{fig:encoder_comparison}
+\end{figure}
 
 \subsection{Penalty Regime Sweep}
 
@@ -236,6 +248,13 @@ $\phi$ & $Y_0$ & $h$(narrow) & $h$(wide) & Gap \\
 
 MV coupling is active at all tested $\phi$. The earlier ``no effect at $\phi = 0.01$'' was entirely an artifact of the broken architecture. At $\phi = 0.5$, $Y_0$ goes negative and the $h$-gap shrinks, suggesting solver instability rather than reduced coupling.
 
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.85\textwidth]{phi_sweep_mv.png}
+  \caption{Left: $h$-gap (narrow $-$ wide) vs penalty $\phi$, peaking at $\phi = 0.1$. Right: $Y_0$ vs $\phi$, going negative at $\phi = 0.5$.}
+  \label{fig:phi_sweep}
+\end{figure}
+
 \subsection{Model Hierarchy}
 
 \begin{table}[!htb]
@@ -256,6 +275,13 @@ Adverse + MV (MomentEncoder) & 3D $(S, q, \text{sig})$ & 0.086 & $-0.294$ \\
 
 MV coupling reduces $Y_0$ by $\sim\!0.3$ in both 2D and 3D settings. Adverse selection alone barely changes $Y_0$ (difference $0.003$), consistent with its role in reshaping value structure rather than level. The MV effect is comparable with and without adverse selection, suggesting the competitive discount is the dominant mechanism at $\phi = 0.1$.
 
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{model_hierarchy.png}
+  \caption{$Y_0$ across the model hierarchy. MV coupling dominates; adverse selection has minimal value-level effect.}
+  \label{fig:hierarchy}
+\end{figure}
+
 \subsection{Stability Frontier}
 
 The stability frontier is dominated by the penalty coefficient $\phi$, not the adverse selection strength $\eta$.
@@ -275,6 +301,20 @@ Exponential & \checkmark\,(0.32) & \checkmark\,(2.17) & $\times$\,(31.1) & $\tim
 \end{table}
 
 \noindent Numbers in parentheses are $\max|Z_t|$. The boundary lies between $\phi = 0.1$ (stable) and $\phi = 1.0$ (diverged). Adverse selection ($\eta = 0$ to $2.0$) does not shift this boundary --- all $\eta$ values are stable at $\phi \le 0.1$ and diverge at $\phi \ge 1.0$. At $\phi = 0.1$, MV coupling with MomentEncoder reduces $Y_0$ from $0.381$ to $0.141$ (no coupling vs moments), while DeepSets gives $Y_0 = 0.115$, confirming the coupling is active even in the stability-sweep regime.
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.85\textwidth]{stability_phi_penalty.png}
+  \caption{Loss and gradient magnitude vs $\phi$ for quadratic and exponential penalties. Sharp transition at $\phi \approx 1$.}
+  \label{fig:stability_phi}
+\end{figure}
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.85\textwidth]{phase_diagram.png}
+  \caption{Phase diagram: $\phi \times \eta$. Left: gradient magnitude (log scale). Right: convergence map. Stability is determined by $\phi$, not $\eta$.}
+  \label{fig:phase_diagram}
+\end{figure}
 
 % ============================================================
 \section{Discussion}
