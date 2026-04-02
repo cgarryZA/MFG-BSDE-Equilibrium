@@ -258,9 +258,23 @@ MV coupling reduces $Y_0$ by $\sim\!0.3$ in both 2D and 3D settings. Adverse sel
 
 \subsection{Stability Frontier}
 
-% STUB: Results from stability_frontier.py
-% Phase diagram: phi x eta, phi x penalty, coupling type comparison
-\textbf{[Pending: stability frontier sweep running.]}
+The stability frontier is dominated by the penalty coefficient $\phi$, not the adverse selection strength $\eta$.
+
+\begin{table}[!htb]
+\centering
+\caption{Stability frontier: $\phi \times$ penalty type (300 iterations, quick sweep).}
+\label{tab:stability}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+Penalty & $\phi = 0.01$ & $\phi = 0.1$ & $\phi = 1.0$ & $\phi = 5.0$ \\
+\midrule
+Quadratic & \checkmark\,(0.16) & \checkmark\,(1.52) & $\times$\,(15.5) & $\times$\,(128) \\
+Exponential & \checkmark\,(0.32) & \checkmark\,(2.17) & $\times$\,(31.1) & $\times$\,(77.7) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent Numbers in parentheses are $\max|Z_t|$. The boundary lies between $\phi = 0.1$ (stable) and $\phi = 1.0$ (diverged). Adverse selection ($\eta = 0$ to $2.0$) does not shift this boundary --- all $\eta$ values are stable at $\phi \le 0.1$ and diverge at $\phi \ge 1.0$. At $\phi = 0.1$, MV coupling with MomentEncoder reduces $Y_0$ from $0.381$ to $0.141$ (no coupling vs moments), while DeepSets gives $Y_0 = 0.115$, confirming the coupling is active even in the stability-sweep regime.
 
 % ============================================================
 \section{Discussion}
