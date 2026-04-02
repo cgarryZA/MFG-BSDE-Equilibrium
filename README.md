@@ -1,159 +1,119 @@
-# A Deep Jump-BSDE Solver for Optimal Market-Making in Limit Order Books
+# DeepMVBSDEJ: McKean-Vlasov Jump-BSDE Solver for Market-Making
 
-**[Read the paper (PDF)](paper.pdf)**
+Distribution-dependent mean-field coupling and adverse selection for optimal market-making in limit order books. Extends the [DeepBSDE-LOB](https://github.com/cgarryZA/DeepBSDE-LOB) preprint with genuine McKean-Vlasov structure.
 
-A PyTorch implementation of a deep BSDE-inspired solver for optimal market-making, preserving the discrete Poisson inventory jump structure of the Cont-Xiong (2024) dealer market model. Validated against finite-difference ground truth with cross-dynamics policy evaluation.
+## What's New (vs DeepBSDE-LOB)
 
-## Key Results
+| Feature | DeepBSDE-LOB (preprint 1) | This repo |
+|---------|--------------------------|-----------|
+| Mean-field coupling | Moment proxy (inactive) | **4 law encoders** (moments, quantiles, histogram, DeepSets) |
+| Price dependence | Economically inert (1D reduction) | **Adverse selection** breaks reduction → genuinely 3D |
+| State dimension | 2 (S, q) effectively 1D | 3 (S, q, signal) genuinely multi-dimensional |
+| Stability analysis | Preliminary table | **Full phase diagram** (phi × eta × horizon × coupling) |
 
-| Method | Y₀ | Loss | Spread | Error vs FD |
-|--------|-----|------|--------|-------------|
-| FD finite-horizon (ground truth) | **0.457** | exact | 1.370 | — |
-| Deep BSDE surrogate (5 seeds) | 0.457 ± 0.000 | 3.4e-05 | 1.333 | <0.1% |
-| Deep BSDE jump (20k iter) | 0.446 ± 0.002 | 2.2e-05 | discrete | 2.4% |
+## Model Hierarchy
 
-**Core finding:** Accurate value approximation does not guarantee accurate control recovery — the surrogate achieves <0.1% value error but 2.7% spread distortion. Despite this, a surrogate-trained policy deployed under true Poisson execution captures 99.3% of FD-optimal P&L.
+| Model | State | MF Coupling | Key Feature |
+|-------|-------|------------|-------------|
+| `contxiong_lob` | 2D (S, q) | None | Diffusion surrogate baseline |
+| `contxiong_lob_mv` | 2D (S, q) | Law encoder | Distribution-dependent coupling |
+| `contxiong_lob_adverse` | 3D (S, q, signal) | None | Price-dependent execution |
+| `contxiong_lob_mv_adverse` | 3D (S, q, signal) | Law encoder | **Full model** |
 
-## Figures
+## Law Encoders
 
-### Training and Quoting
-<p float="left">
-<img src="plots/convergence.png" width="48%" />
-<img src="plots/quoting_strategy.png" width="48%" />
-</p>
+Four population distribution representations, all with the same interface:
 
-### Value Function and Ground Truth Comparison
-<p float="left">
-<img src="plots/value_function.png" width="48%" />
-<img src="plots/fd_vs_deepbsde.png" width="48%" />
-</p>
-
-### Gradient Surface and Quote Skew
-<p float="left">
-<img src="plots/z_gradient_surface_3d.png" width="48%" />
-<img src="plots/spread_heatmap.png" width="48%" />
-</p>
-
-### Breaking Points and Sensitivity
-<p float="left">
-<img src="plots/breaking_point.png" width="48%" />
-<img src="plots/sensitivity.png" width="48%" />
-</p>
-
-### Policy Simulation
-<img src="plots/policy_simulation.png" width="70%" />
+| Encoder | Features | Learnable | embed_dim |
+|---------|----------|-----------|-----------|
+| Moments | mean, var, skew, mean\|q\|, max\|q\|, std | No | 6 |
+| Quantiles | mean + 5 quantiles | No | 6 |
+| Histogram | Soft Gaussian bins | No | 20 |
+| DeepSets | Permutation-invariant NN | **Yes** | 16 |
 
 ## Installation
 
 ```bash
-git clone https://github.com/cgarryZA/DeepBSDE.git
-cd DeepBSDE
+git clone https://github.com/cgarryZA/DeepMVBSDEJ.git
+cd DeepMVBSDEJ
 pip install torch numpy matplotlib
-```
-
-For GPU support:
-```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu124
 ```
 
 ## Quick Start
 
-**Train the continuous LOB solver:**
 ```bash
-python main.py --config configs/lob_d2.json --exp_name demo --log_dir ./logs --device auto
+# Base model (diffusion surrogate)
+python main.py --config configs/lob_d2.json --exp_name base --device auto
+
+# MV model with DeepSets encoder
+python main.py --config configs/lob_d2_mv.json --exp_name mv_deepsets --device auto
+
+# Adverse selection (3D, genuinely multi-dimensional)
+python main.py --config configs/lob_d3_adverse.json --exp_name adverse --device auto
+
+# Full model: MV + adverse selection
+python main.py --config configs/lob_d3_mv_adverse.json --exp_name full --device auto
 ```
 
-**Train the jump-diffusion solver:**
-```bash
-python main.py --config configs/lob_d2_jump.json --exp_name jump_demo --log_dir ./logs --device auto
-```
+## Experiments
 
-**Generate plots:**
 ```bash
-python scripts/plot_lob.py --config configs/lob_d2.json \
-    --result logs/demo_result.txt \
-    --weights logs/demo_model.pt \
-    --out_dir plots
-```
+# MV encoder ablation + baselines
+python scripts/run_mv_experiments.py --quick --device cuda
 
-**Run the full experiment suite:**
-```bash
-python scripts/run_all_experiments.py --device cuda        # full (5 seeds, ~12 hours)
-python scripts/run_all_experiments.py --quick --device cuda  # quick (2 seeds, ~1.5 hours)
-```
+# Law sensitivity test (does distribution shape affect policy?)
+python scripts/law_sensitivity_test.py --train --device cuda
 
-**Find the solver's breaking point:**
-```bash
-python scripts/find_breaking_point.py --param gamma --lo 0.1 --hi 5.0 --penalty exponential
-```
+# Stability frontier (phase diagram)
+python scripts/stability_frontier.py --quick --device cuda
 
-**Forward policy simulation:**
-```bash
-python scripts/simulate_policy.py --weights logs/demo_model.pt
+# 3D finite-difference baseline for adverse selection
+python scripts/finite_difference_adverse.py --eta 0.5
 ```
 
 ## Repository Structure
 
 ```
-DeepBSDE/
-├── paper.pdf                        # Preprint (14 pages)
-├── main.py                          # Training entry point
-├── solver.py                        # All model + solver classes
-├── config.py                        # Configuration dataclasses
-├── registry.py                      # Equation registration
+DeepMVBSDEJ/
+├── main.py                              # Training entry point
+├── solver.py                            # All model + solver classes
+├── config.py                            # Configuration
+├── registry.py                          # Equation registration
 ├── equations/
-│   ├── base.py                      # Abstract base class
-│   ├── sinebm.py                    # Sine-BM benchmark (Han-Hu-Long 2022)
-│   ├── flocking.py                  # Cucker-Smale MFG
-│   ├── contxiong_lob.py             # Diffusion surrogate (Option A)
-│   └── contxiong_lob_jump.py        # Jump-BSDE solver (Option B)
-├── configs/                         # JSON experiment configs
+│   ├── base.py                          # Abstract base
+│   ├── law_encoders.py                  # 4 law encoder classes
+│   ├── contxiong_lob.py                 # Diffusion surrogate (base)
+│   ├── contxiong_lob_mv.py              # + MV coupling
+│   ├── contxiong_lob_adverse.py         # + adverse selection (3D)
+│   └── contxiong_lob_mv_adverse.py      # + both (full model)
+├── configs/                             # JSON experiment configs
 ├── scripts/
-│   ├── plot_lob.py                  # Main visualization suite
-│   ├── plot_experiments.py          # Experiment result plots
-│   ├── plot_grid_comparison.py      # FD vs BSDE full-grid comparison
-│   ├── simulate_policy.py           # Forward P&L simulation
-│   ├── find_breaking_point.py       # Binary search for instability
-│   ├── finite_difference_baseline.py        # Stationary FD solver
-│   ├── finite_difference_finite_horizon.py  # Matched finite-horizon FD
-│   ├── run_experiments.py           # Basic experiment runner
-│   └── run_all_experiments.py       # Full experiment suite
-└── plots/                           # Generated figures
+│   ├── run_mv_experiments.py            # Encoder ablation + baselines
+│   ├── law_sensitivity_test.py          # Critical MV validation
+│   ├── stability_frontier.py            # Phase diagram sweep
+│   ├── plot_stability.py                # Phase diagram plots
+│   └── finite_difference_adverse.py     # 3D FD baseline
+└── plots/                               # Generated figures
 ```
-
-## Configuration
-
-Key parameters in `configs/lob_d2.json`:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `sigma_s` | 0.3 | Mid-price volatility |
-| `lambda_a`, `lambda_b` | 1.0 | Order arrival rates |
-| `alpha` | 1.5 | Execution probability decay |
-| `phi` | 0.01 | Inventory penalty coefficient |
-| `discount_rate` | 0.1 | Discount rate r |
-| `penalty_type` | `"quadratic"` | `"quadratic"`, `"cubic"`, or `"exponential"` |
-| `num_time_interval` | 50 | Euler-Maruyama time steps |
 
 ## Citation
 
 ```bibtex
-@misc{garry2026deepbsdelob,
+@misc{garry2026deepmvbsdej,
   author       = {Christian Garry},
-  title        = {A Deep Jump-{BSDE} Solver for Optimal Market-Making
-                  in Limit Order Books},
+  title        = {{DeepMVBSDEJ}: {McKean-Vlasov} Jump-{BSDE} Solver for
+                  Market-Making in Limit Order Books},
   year         = {2026},
-  howpublished = {\url{https://github.com/cgarryZA/DeepBSDE}},
+  howpublished = {\url{https://github.com/cgarryZA/DeepMVBSDEJ}},
 }
 ```
 
 ## References
 
-- Cont, R. & Xiong, W. (2024). Dynamics of market making algorithms in dealer markets. *Mathematical Finance*, 34:467-521.
-- Han, J., Jentzen, A. & E, W. (2018). Solving high-dimensional PDEs using deep learning. *PNAS*, 115(34):8505-8510.
+- Cont, R. & Xiong, W. (2024). Dynamics of market making algorithms in dealer markets. *Math. Finance*, 34:467-521.
 - Han, J., Hu, R. & Long, J. (2022). Learning high-dimensional McKean-Vlasov FBSDEs. *SIAM J. Numer. Anal.*, 60(4):2208-2232.
-- Avellaneda, M. & Stoikov, S. (2008). High-frequency trading in a limit order book. *Quantitative Finance*, 8(3):217-224.
-- Andersson, K. et al. (2023). A deep solver for BSDEs with jumps. *arXiv:2211.04349*.
+- Han, J., Jentzen, A. & E, W. (2018). Solving high-dimensional PDEs using deep learning. *PNAS*, 115(34):8505-8510.
+- Avellaneda, M. & Stoikov, S. (2008). High-frequency trading in a limit order book. *Quant. Finance*, 8(3):217-224.
 
 ## License
 
