@@ -10,7 +10,7 @@ A PyTorch implementation of a deep BSDE-inspired solver for optimal market-makin
 |--------|-----|------|--------|-------------|
 | FD finite-horizon (ground truth) | **0.457** | exact | 1.370 | — |
 | Deep BSDE surrogate (5 seeds) | 0.457 ± 0.000 | 3.4e-05 | 1.333 | <0.1% |
-| Deep BSDE jump (5 seeds) | 0.446 ± 0.002 | 2.2e-05 | discrete | 2.4% |
+| Deep BSDE jump (20k iter) | 0.446 ± 0.002 | 2.2e-05 | discrete | 2.4% |
 
 **Core finding:** Accurate value approximation does not guarantee accurate control recovery — the surrogate achieves <0.1% value error but 2.7% spread distortion. Despite this, a surrogate-trained policy deployed under true Poisson execution captures 99.3% of FD-optimal P&L.
 
