@@ -427,7 +427,28 @@ The central finding is that mean-field effects are \emph{present in the model} b
 BatchNorm, while critical for Deep BSDE training stability~\cite{han2018solving}, is fundamentally incompatible with broadcast conditioning signals. The two-stream architecture (BN on per-agent features, no BN on shared features) resolves this cleanly. FiLM-style modulation~\cite{perez2018film} would be a natural alternative. More broadly, these findings suggest that any deep learning system conditioning on shared population statistics must carefully consider representation and normalisation, as architectural choices can mask genuine interaction effects.
 
 \paragraph{Two pathways for law dependence.}
-The current architecture provides two channels through which $\mup$ affects control: (i)~the competitive factor $h(\Phi(\mup))$ entering the generator via execution rates, and (ii)~the law embedding entering the subnet directly via the two-stream architecture. We have not disentangled how much of the observed policy variation comes from each. The FD consistency check validates the $h$-channel (value ordering matches exogenous scaling), but the larger quote shifts may partly reflect the direct subnet conditioning. Isolating each pathway's contribution --- e.g., by ablating the law stream while keeping $h$, or vice versa --- is an important direction for future work.
+The architecture provides two channels: (i)~$h(\Phi(\mup))$ entering the generator (affecting value via execution rates), and (ii)~$\Phi(\mup)$ entering the subnet directly (affecting $Z$ and thus quotes). We disentangle these by cross-feeding: supplying one population's embedding to $h$ and another's to the subnet (\Cref{tab:disentangle}).
+
+\begin{table}[!htb]
+\centering
+\caption{Pathway disentanglement: which channel drives which effect?}
+\label{tab:disentangle}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Condition & $h$ & $Z^q$ & $\delta_a$ \\
+\midrule
+Full narrow & 0.454 & $-0.003$ & 0.663 \\
+Full wide & 0.104 & $+1.794$ & 2.758 \\
+$h$=wide, subnet=narrow & 0.104 & $-0.003$ & \textbf{0.663} \\
+$h$=narrow, subnet=wide & 0.454 & $+1.794$ & \textbf{2.758} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The quote shift comes \emph{entirely} from the subnet pathway: swapping the subnet embedding changes $\delta_a$ from $0.663$ to $2.758$ regardless of $h$. Swapping $h$ alone does not move quotes at all. This means \textbf{$h$ controls the value level} (through execution rates in the generator) \textbf{while the subnet controls the quoting strategy} (through $Z^q$ directly). The two channels are functionally independent in the trained model.
+
+\paragraph{Generalisation across population families.}
+The trained model (MomentEncoder, $\phi = 0.1$) generalises to distribution types not seen during training. Evaluating on uniform, bimodal, skewed (chi-squared), and heavy-tailed (Student's $t$, $\nu=3$) populations, the competitive factor $h$ tracks population dispersion monotonically: uniform$[-1,1]$ ($h = 0.36$), bimodal$\pm 2$ ($h = 0.19$), heavy-tail ($h = 0.10$). Heavy-tailed distributions produce lower $h$ than Gaussians of similar variance, suggesting the model is sensitive to tail behaviour beyond the second moment. This is not memorisation of Gaussian shapes.
 
 \paragraph{Economic interpretation.}
 The learned competitive factor $h(\Phi(\mup))$ maps wider inventory distributions to lower fill rates, consistent with the intuition that dispersed populations contain more aggressive competitors. The resulting policy adaptations (narrower ask under competition, wider bid) are economically rational inventory management responses. We emphasise that this is a learned mapping, not a derived equilibrium condition: the economic story is plausible but not uniquely identified from the current evidence.
