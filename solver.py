@@ -1464,7 +1464,13 @@ class ContXiongLOBMVModel(nn.Module):
 
             # === Subnet input: own state + law embedding ===
             own_state = x[:, :, t + 1]  # [batch, 2]
-            subnet_input = torch.cat([own_state, law_embed_batch], dim=1)  # [batch, 2+law_dim]
+            if getattr(self, 'h_only_mode', False):
+                # H-only control: law enters generator (via set_current_law_embed)
+                # but NOT the subnet — zero out law features
+                zero_law = torch.zeros_like(law_embed_batch)
+                subnet_input = torch.cat([own_state, zero_law], dim=1)
+            else:
+                subnet_input = torch.cat([own_state, law_embed_batch], dim=1)  # [batch, 2+law_dim]
             z = self.subnet[t](subnet_input) / self.bsde.dim
 
         # Terminal step — set law embedding for final f_tf call

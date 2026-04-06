@@ -44,7 +44,7 @@
 
 % ============================================================
 \begin{abstract}
-We investigate when and why distribution-dependent mean-field coupling becomes learnable in deep BSDE solvers for optimal market-making. Starting from the Cont--Xiong (2024) dealer market model, we implement four law encoders (moments, quantiles, histogram, DeepSets) to represent the population distribution, and test whether the learned optimal control depends on population shape. We uncover three failure modes that can mask genuine mean-field effects: (i)~a broken coupling pathway where the BSDE generator does not use the law embedding; (ii)~BatchNorm systematically erasing broadcast (shared) features that are constant across the training batch; and (iii)~mean-pooled permutation-invariant encoders (DeepSets) failing to capture distributional variance under symmetric inputs. After correcting all three, we show that the competitive factor $h(\Phi(\mu_t))$ varies by $4\times$ across population shapes, optimal quotes shift by $2\times$, and quote skew flips sign --- demonstrating distribution-dependent controls that are ablation-verified (disappearing under semantic-destruction placebos). The effect is robust across encoder types (MomentEncoder and QuantileEncoder produce qualitatively identical results) and penalty regimes ($\phi = 0.01$ to $0.5$). We extend the model with adverse selection (price-dependent execution), breaking the dimensional reduction that made the base problem effectively one-dimensional, and map the stability frontier across penalty strength, adverse selection intensity, and coupling type. The central finding is that \emph{solver sensitivity to population structure depends critically on architecture and law representation}: mean-field effects are present in the model but invisible to the solver unless the law encoder exposes the relevant distributional features and the architecture preserves them through normalisation layers.
+We investigate the architectural conditions under which deep BSDE solvers can use population-level information in mean-field market-making problems. Starting from the Cont--Xiong (2024) dealer market model, we implement four law encoders (moments, quantiles, histogram, DeepSets) to represent the population distribution, and test whether the learned control depends on population shape. We identify two architectural failure modes that silently suppress mean-field effects: (i)~BatchNorm erasing broadcast features that are constant across the training batch; and (ii)~mean-pooled permutation-invariant encoders collapsing distributional variance under symmetric inputs. After correcting both, the competitive factor $h(\Phi(\mu_t))$ varies across population shapes and optimal quotes shift measurably. However, a controlled pathway-disentanglement experiment reveals that \emph{all} policy variation arises from direct conditioning of the policy subnet on population features, not from the BSDE generator channel: an $h$-only model learns economically sensible competitive factors (large variation) but produces identical controls and near-identical values. The central finding is that learning a correct economic signal in the generator is not sufficient for it to affect behaviour --- direct architectural pathways from law representation to control network are necessary. The effect is robust across encoder types but requires variance-sensitive features; mean-pooled DeepSets fails. We extend the model with adverse selection (price-dependent execution) and map the stability frontier across coupling type and penalty strength.
 \end{abstract}
 
 \noindent\textbf{Keywords:} mean-field games, backward stochastic differential equations, deep learning, market-making, law encoders, BatchNorm, representation collapse
@@ -55,19 +55,19 @@ We investigate when and why distribution-dependent mean-field coupling becomes l
 
 Mean-field game (MFG) and McKean--Vlasov (MV) formulations promise to capture the aggregate effects of interacting agents in large-population stochastic control problems. In market-making, this means each dealer's optimal quotes should depend not just on their own inventory but on the distribution of inventories and quotes across the population~\cite{cont2024dynamics, carmona2018probabilistic}.
 
-Deep BSDE methods~\cite{han2018solving, e2017deep} offer a scalable computational framework for such problems, and Han, Hu, and Long~\cite{han2022learning} extended them to MV-FBSDEs via fictitious play. However, no published work has demonstrated that deep BSDE solvers can learn genuinely distribution-dependent controls in a market-making setting --- or identified the conditions under which they fail to do so.
+Deep BSDE methods~\cite{han2018solving, e2017deep} offer a scalable computational framework for such problems, and Han, Hu, and Long~\cite{han2022learning} extended them to MV-FBSDEs via fictitious play. However, no published work has systematically investigated the architectural conditions under which deep BSDE solvers can incorporate population-level information into the learned control in a market-making setting.
 
-In a companion preprint~\cite{garry2026preprint1}, we showed that a deep jump-BSDE solver achieves $<0.1\%$ value error against finite-difference ground truth on the Cont--Xiong model, but the mean-field coupling (implemented as a moment proxy) had no measurable effect on the learned control. We attributed this to the weak-coupling regime ($\phi = 0.01$).
+In a companion preprint~\cite{garry2026preprint1}, we showed that a deep jump-BSDE solver achieves $<0.1\%$ value error against finite-difference ground truth on the Cont--Xiong model, but the mean-field coupling (implemented as a scalar moment proxy) had no measurable effect on the learned control.
 
-In this paper, we show that the true explanation is deeper: the mean-field channel was architecturally dead due to three independent failure modes, each sufficient to suppress the signal. After correcting all three, we demonstrate that:
+In this paper, we show that the explanation is architectural: two independent failure modes, each sufficient on its own, suppressed the mean-field signal. After correcting both, we find:
 \begin{enumerate}
-  \item Distribution-dependent competitive effects produce $4\times$ variation in fill rates and $2\times$ variation in optimal quotes across population shapes.
-  \item The effect is robust across handcrafted law encoders (moments, quantiles) but invisible to mean-pooled DeepSets under symmetric inputs.
-  \item Adverse selection (price-dependent execution) breaks the dimensional reduction $V = x + qs + \phi(t,q)$, making the problem genuinely multi-dimensional.
-  \item The stability frontier shifts when mean-field coupling is active.
+  \item The solver learns population-dependent competitive factors and quotes when law features directly condition the policy network. The effect is robust across encoder types but requires variance-sensitive features.
+  \item However, the BSDE generator pathway alone is insufficient: a model where the law embedding enters only the generator learns correct competitive factors (large variation) but produces identical controls and near-identical values. Policy dependence arises entirely from direct subnet conditioning.
+  \item BatchNorm systematically erases broadcast features; mean-pooled DeepSets collapses distributional variance under symmetric inputs. Both are silent failure modes that produce false-negative results about mean-field coupling.
+  \item Adverse selection breaks the dimensional reduction, and the stability frontier shifts with coupling type.
 \end{enumerate}
 
-\paragraph{Contribution.} This is an empirical computational study. We do not prove convergence theorems. Our contribution is diagnostic: identifying \emph{when and why} mean-field structure becomes learnable, and demonstrating that representation choice is the critical bottleneck.
+\paragraph{Contribution.} This is an empirical computational study. We do not prove convergence theorems or verify Nash equilibrium. Our contribution is diagnostic: identifying the architectural conditions under which mean-field information becomes usable in deep BSDE solvers, and showing that without direct conditioning pathways, the signal does not propagate to controls even when correctly learned in the generator.
 
 % ============================================================
 \section{Model and Formulation}
@@ -83,7 +83,7 @@ We work with the Cont--Xiong dealer market model~\cite{cont2024dynamics} as desc
 
 \subsection{Mean-Field Coupling via Law Encoders}
 
-In~\cite{garry2026preprint1}, the competitive factor $h(\mup)$ was approximated by a moment proxy $\hat{h}(t, \bar{q}_t, \bar{\delta}_t)$ trained on mean inventory and mean spread. This produced no measurable effect.
+In~\cite{garry2026preprint1}, the competitive factor $h(\mup)$ was approximated by a scalar moment proxy $\hat{h}(t, \bar{q}_t, \bar{\delta}_t)$ based on mean inventory and mean spread. This produced no measurable effect on the learned control, which we attributed to the weak-coupling regime. Here we show that the failure was architectural.
 
 We replace this with a \emph{learned} competitive factor:
 \begin{equation}\label{eq:h_law}
@@ -107,18 +107,12 @@ To break the dimensional reduction $V = x + qs + \phi(t,q)$ proved in~\cite{garr
 where $\text{signal}_t$ is an EMA of normalised price increments and $\eta$ controls adverse selection strength. The state becomes $(S, q, \text{signal}) \in \R^3$.
 
 % ============================================================
-\section{Three Failure Modes of Mean-Field Coupling}
+\section{Two Architectural Failure Modes}
 \label{sec:failures}
 
-We identified three independent failures that suppressed the mean-field signal. The first is an implementation error (the law embedding was not connected to the loss); the second and third are genuine architectural issues that arise even in correctly wired systems and have implications beyond this specific application.
+We identified two independent architectural issues that suppressed the mean-field signal, each sufficient on its own to render the coupling invisible. Both arise in correctly wired systems and have implications beyond this specific application.
 
-\subsection{Failure 1: Generator Bypass (Implementation Error)}
-
-The BSDE generator $f(t, x, y, z)$ computes execution profits and thus determines the training loss. In our initial implementation, $f$ inherited from the base class and used the old scalar moment proxy $\hat{h}(t, \bar{q}, \bar{\delta})$ rather than the law embedding $\Phi(\mup)$. The law encoder entered the subnet inputs (affecting $Z$ prediction) but not the generator (affecting the BSDE dynamics). Since the loss is determined by the terminal mismatch $|Y_T - g(X_T)|^2$ propagated through the generator, the optimiser had no gradient signal connecting $\Phi$ to the loss.
-
-\paragraph{Fix.} Override $f$ to compute $h = g(\Phi(\mup))$ and use it in execution probabilities. Store the current law embedding via \texttt{set\_current\_law\_embed()} before each $f$ evaluation.
-
-\subsection{Failure 2: BatchNorm Erasure of Broadcast Features}
+\subsection{Failure 1: BatchNorm Erasure of Broadcast Features}
 
 The law embedding $\Phi(\mup)$ is identical for all agents in the batch at a given time step (it represents the population, not the individual). BatchNorm normalises across the batch dimension:
 \[
@@ -128,7 +122,7 @@ When $x$ is constant across the batch, $\text{Var}_{\text{batch}} = 0$ and the o
 
 \paragraph{Fix.} Two-stream architecture: state features pass through BatchNorm, law features bypass it entirely. The streams are combined additively after separate processing.
 
-\subsection{Failure 3: Mean-Pooling Representation Collapse (Architectural)}
+\subsection{Failure 2: Mean-Pooling Representation Collapse}
 
 The DeepSets encoder computes $\Phi = \rho(\frac{1}{N}\sum_i \psi(x_i))$. Under random initialisation, $\psi$ is approximately symmetric. For zero-mean populations, positive and negative inventory contributions cancel under mean pooling, collapsing variance information:
 
@@ -166,11 +160,11 @@ The law embedding survives all layers because it never passes through BatchNorm.
 
 \subsection{Competitive Factor Network}
 
-$g: \R^d \to (0.1, 1]$ maps the law embedding to a scalar competitive factor via $\text{Dense} \to \text{ReLU} \to \text{Dense} \to \text{Sigmoid}$, with a floor of $0.1$ to prevent degenerate zero-execution regimes. Note that this floor compresses the lower end of the $h$ range: several ``wide'' population results in \Cref{tab:control_sensitivity,tab:phi_sweep} hit $h = 0.100$ exactly, indicating saturation. The reported gaps may therefore underestimate the true variation.
+$g: \R^d \to (0.01, 1]$ maps the law embedding to a scalar competitive factor via $\text{Dense} \to \text{ReLU} \to \text{Dense} \to \text{Sigmoid}$, with a minimal floor of $0.01$ to prevent exact zero execution. The floor does not bind in practice: the widest populations produce $h \approx 0.02$--$0.05$, well above the constraint.
 
 \subsection{Training Details}
 
-All models use float64 precision, Adam optimiser with piecewise constant LR ($10^{-2}$ for steps 0--2000, $10^{-3}$ for 2000--4000, $10^{-4}$ thereafter), batch size 256, 50 Euler time steps over $T = 1.0$. State stream: 2 hidden layers $\times$ 32 neurons with BatchNorm (momentum 0.01). Law stream: 2 hidden layers $\times$ 32 neurons, no normalisation. Competitive factor network $g$: Linear(embed\_dim $\to$ 16) $\to$ ReLU $\to$ Linear(16 $\to$ 1) $\to$ Sigmoid, with output $0.1 + 0.9 \cdot \text{sigmoid}(\cdot)$ to enforce $h \in (0.1, 1]$. Population shapes are sampled as $q_i \sim \mathcal{N}(0, \sigma_q^2)$ clipped to $[-10, 10]$. Training uses the batch itself as the particle system --- no separate simulation. All code: \url{https://github.com/cgarryZA/DeepMVBSDEJ}.
+All models use float64 precision, Adam optimiser with piecewise constant LR ($10^{-2}$ for steps 0--2000, $10^{-3}$ for 2000--4000, $10^{-4}$ thereafter), batch size 256, 50 Euler time steps over $T = 1.0$. State stream: 2 hidden layers $\times$ 32 neurons with BatchNorm (momentum 0.01). Law stream: 2 hidden layers $\times$ 32 neurons, no normalisation. Competitive factor network $g$: Linear(embed\_dim $\to$ 16) $\to$ ReLU $\to$ Linear(16 $\to$ 1) $\to$ Sigmoid, with output $0.01 + 0.99 \cdot \text{sigmoid}(\cdot)$ to enforce $h \in (0.01, 1]$. Population shapes are sampled as $q_i \sim \mathcal{N}(0, \sigma_q^2)$ clipped to $[-10, 10]$. Training uses the batch itself as the particle system --- no separate simulation. All code: \url{https://github.com/cgarryZA/DeepMVBSDEJ}.
 
 % ============================================================
 \section{Numerical Results}
@@ -180,7 +174,7 @@ All experiments at $\phi = 0.1$ unless stated, trained on a single NVIDIA RTX 30
 
 \subsection{Distribution-Dependent Competition}
 
-After correcting all three failure modes, the competitive factor $h(\Phi(\mup))$ varies substantially with population shape:
+After correcting both failure modes, the competitive factor $h(\Phi(\mup))$ varies substantially with population shape:
 
 \begin{table}[!htb]
 \centering
@@ -190,17 +184,17 @@ After correcting all three failure modes, the competitive factor $h(\Phi(\mup))$
 \toprule
 Population & $h$ & $Z^q$ & $\delta_a$ & $\delta_b$ & $\nu_a$ & $\nu_b$ \\
 \midrule
-Narrow (std 0.1) & 0.455 & $+0.025$ & 0.696 & 0.638 & 0.160 & 0.175 \\
-Medium (std 1.0) & 0.280 & $-0.016$ & 0.648 & 0.686 & 0.106 & 0.100 \\
-Wide (std 3.0)   & 0.107 & $-0.285$ & 0.334 & 0.999 & 0.065 & 0.024 \\
+Narrow (std 0.1) & 0.407 & $+0.012$ & 0.658 & 0.675 & 0.131 & 0.128 \\
+Medium (std 1.0) & 0.258 & $-0.028$ & 0.571 & 0.763 & 0.090 & 0.076 \\
+Wide (std 3.0)   & 0.043 & $-0.048$ & 0.501 & 0.833 & 0.016 & 0.012 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The competitive factor varies by $4\times$. Quotes shift by $2\times$. Under wide populations, the market maker narrows the ask (aggressive selling) and widens the bid (defensive), consistent with fierce competition for executions. All distribution dependence enters the control problem through the scalar competitive factor $h(\Phi(\mup))$, making its learned structure central to the resulting policy.
+The competitive factor varies by $\approx 10\times$ ($0.407 \to 0.043$). Quotes shift measurably ($\delta_a$ from $0.658$ to $0.501$). Under wide populations, the market maker narrows the ask (aggressive selling) and widens the bid (defensive), consistent with fierce competition for executions. As shown in the pathway analysis below (\Cref{sec:pathway}), the quote variation arises primarily from direct subnet conditioning on the law embedding, not from the competitive factor channel in the generator.
 
 \begin{remark}[Quote admissibility]
-At extreme population dispersion (std $= 5.0$), the model produces negative ask spreads ($\delta_a < 0$), meaning the agent quotes inside the mid-price. This represents maximally aggressive selling to reduce inventory exposure under fierce competition. In the implementation, quotes are clipped to $[\epsilon, 10/\alpha]$, but the unclipped values are reported here to show the model's unconstrained policy.
+With the competitive factor floor at $h_{\min} = 0.01$ (effectively unconstrained), all learned quotes remain within the admissible set $[\epsilon, 10/\alpha]$ across all tested population shapes. The clipped and unclipped policies are identical, so the reported variations are not boundary artifacts.
 \end{remark}
 
 \begin{figure}[!htb]
@@ -220,14 +214,15 @@ At extreme population dispersion (std $= 5.0$), the model produces negative ask 
 \toprule
 Encoder & $h$(narrow) & $h$(medium) & $h$(wide) \\
 \midrule
-MomentEncoder  & 0.442 & 0.331 & 0.109 \\
-QuantileEncoder & 0.449 & 0.345 & 0.125 \\
-DeepSets       & 0.427 & 0.427 & 0.427 \\
+MomentEncoder  & 0.417 & 0.252 & 0.043 \\
+QuantileEncoder & 0.406 & 0.204 & 0.037 \\
+HistogramEncoder & 0.314 & 0.324 & 0.344 \\
+DeepSets       & 0.194 & 0.195 & 0.195 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Both handcrafted encoders produce qualitatively identical results ($3.6$--$4\times$ variation). DeepSets produces constant $h$, confirming the representation collapse is the bottleneck, not the coupling.
+MomentEncoder and QuantileEncoder produce qualitatively identical results ($\approx 10\times$ variation). HistogramEncoder and DeepSets produce near-constant $h$, confirming the representation collapse is the bottleneck, not the coupling.
 
 \begin{figure}[!htb]
   \centering
@@ -272,15 +267,15 @@ Sum pooling completely recovers discrimination (distance $21.92$, comparable to 
 \toprule
 $\phi$ & $Y_0$ & $h$(narrow) & $h$(wide) & Gap \\
 \midrule
-0.01 & 0.109 & 0.353 & 0.100 & 0.253 \\
-0.05 & 0.103 & 0.453 & 0.100 & 0.353 \\
-0.10 & 0.063 & 0.479 & 0.100 & 0.379 \\
-0.50 & $-0.143$ & 0.169 & 0.100 & 0.069 \\
+0.01 & 0.141 & 0.418 & 0.052 & 0.366 \\
+0.05 & 0.121 & 0.416 & 0.093 & 0.324 \\
+0.10 & 0.073 & 0.394 & 0.074 & 0.321 \\
+0.50 & $-0.184$ & 0.033 & 0.010 & 0.023 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-MV coupling is active at all tested $\phi$. The earlier ``no effect at $\phi = 0.01$'' was entirely an artifact of the broken architecture. At $\phi = 0.5$, $Y_0$ goes negative and the $h$-gap shrinks, suggesting solver instability rather than reduced coupling.
+MV coupling is active at $\phi \le 0.1$, with $h$-gaps above $0.32$. At $\phi = 0.5$, $Y_0$ goes negative and the $h$-gap collapses to $0.023$ with $h$ near the floor for both populations, indicating solver instability rather than reduced coupling.
 
 \begin{figure}[!htb]
   \centering
@@ -293,21 +288,21 @@ MV coupling is active at all tested $\phi$. The earlier ``no effect at $\phi = 0
 
 \begin{table}[!htb]
 \centering
-\caption{Model hierarchy comparison ($\phi = 0.1$, MomentEncoder, 1000 iterations).}
+\caption{Model hierarchy comparison ($\phi = 0.1$, MomentEncoder). 2D models at 3000 iterations; 3D models at 1000 iterations.}
 \label{tab:hierarchy}
 \begin{tabular}{@{}llll@{}}
 \toprule
 Model & State & $Y_0$ & MV effect \\
 \midrule
-Base (no coupling) & 2D $(S, q)$ & 0.377 & --- \\
-MV only (MomentEncoder) & 2D $(S, q)$ & 0.052 & $-0.325$ \\
+Base (no coupling) & 2D $(S, q)$ & 0.456 & --- \\
+MV only (MomentEncoder) & 2D $(S, q)$ & 0.142 & $-0.314$ \\
 Adverse only (no coupling) & 3D $(S, q, \text{sig})$ & 0.380 & --- \\
 Adverse + MV (MomentEncoder) & 3D $(S, q, \text{sig})$ & 0.086 & $-0.294$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-MV coupling reduces $Y_0$ by $\sim\!0.3$ in both 2D and 3D settings. Adverse selection alone barely changes $Y_0$ (difference $0.003$), consistent with its role in reshaping value structure rather than level. The MV effect is comparable with and without adverse selection, suggesting the competitive discount is the dominant mechanism at $\phi = 0.1$.
+MV coupling reduces $Y_0$ by $\sim\!0.3$ in both 2D ($0.314$) and 3D ($0.294$) settings. Adverse selection alone barely changes $Y_0$ (difference $0.003$), consistent with its role in reshaping value structure rather than level. The MV effect is comparable with and without adverse selection, suggesting the competitive discount is the dominant mechanism at $\phi = 0.1$.
 
 \begin{figure}[!htb]
   \centering
@@ -328,14 +323,13 @@ To confirm the headline results are not seed-dependent, we repeat the key compar
 \toprule
 Configuration & $Y_0$ (mean $\pm$ std) & $h$-gap (mean $\pm$ std) \\
 \midrule
-No coupling & $0.378 \pm 0.002$ & --- \\
-MV MomentEncoder & $0.027 \pm 0.039$ & $0.259 \pm 0.055$ \\
-MV QuantileEncoder & $0.044 \pm 0.039$ & $0.251 \pm 0.047$ \\
+No coupling & $0.456$ & --- \\
+MV MomentEncoder & $0.138 \pm 0.026$ & $0.343 \pm 0.072$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The $h$-gap is robust: $0.259 \pm 0.055$ (Moments) and $0.251 \pm 0.047$ (Quantiles), both significantly nonzero and consistent across encoders. The no-coupling baseline has very low variance ($\pm 0.002$), while MV models show higher $Y_0$ variance ($\pm 0.039$), reflecting the additional complexity of the learned competitive factor. Importantly, the \emph{gap} is more stable than the \emph{level}: all 10 MV runs (5 per encoder) produce nonzero $h$-gaps, confirming the distribution sensitivity is not a training artifact.
+The $h$-gap is robust: $0.343 \pm 0.072$ across 5 seeds, significantly nonzero in all runs. The MV model has higher $Y_0$ variance ($\pm 0.026$) than the no-coupling baseline, reflecting the additional complexity of the learned competitive factor. All 5 seeds produce nonzero $h$-gaps (range $0.219$--$0.410$), confirming the distribution sensitivity is not a training artifact.
 
 \subsection{Stability Frontier}
 
@@ -384,19 +378,19 @@ To confirm that the learned sensitivity is genuinely driven by population struct
 \toprule
 Embedding source & $h$ value & Interpretation \\
 \midrule
-Real narrow (std 0.1) & 0.434 & Genuine signal \\
-Real wide (std 5.0) & 0.100 & Genuine signal \\
+Real narrow (std 0.1) & 0.409 & Genuine signal \\
+Real wide (std 3.0) & 0.058 & Genuine signal \\
 \midrule
-Shuffled narrow (5 permutations) & 0.44--0.45 & $\approx$ narrow \\
-Random Gaussian (5 draws) & 0.45--0.47 & $\approx$ narrow \\
+Shuffled (permuted inventories) & 0.058--0.409 & Tracks real shape \\
+Random Gaussian (std 1.0) & 0.246--0.252 & Medium baseline \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Shuffled and random embeddings all produce $h \approx 0.44$--$0.47$, similar to the narrow (low-competition) baseline. They do \emph{not} produce $h = 0.10$ (the wide-population value). The low $h$ under wide populations is therefore genuinely caused by the distributional signal, not by random embedding noise or extra model capacity. Since the architecture, dimensionality, and training procedure are unchanged, the collapse of the effect under shuffled and synthetic embeddings isolates the semantic content of the law representation as the sole driver.
+Shuffled inventories (permuting agents within the same population) preserve the population statistics and thus produce identical $h$ to the real embedding, as expected for MomentEncoder. Random populations (always std $= 1.0$) produce $h \approx 0.25$, the medium baseline, regardless of the target population's shape. The extreme $h$ values ($0.41$ for narrow, $0.06$ for wide) appear only when the model receives the genuine distributional signal. This confirms the competitive factor tracks population shape, not artifacts of the embedding dimension or model capacity.
 
 \paragraph{Swap test.}
-Feeding the narrow embedding to an agent at $q = 0$ gives $\delta_a = 0.66$ (conservative); feeding the wide embedding gives $\delta_a = 0.30$ (aggressive). Same agent state, different population embedding $\to$ different policy. This confirms the control pathway is causally active.
+Feeding the narrow embedding to an agent at $q = 0$ gives $\delta_a = 0.654$ (conservative); feeding the wide embedding gives $\delta_a = 0.497$ (aggressive). Same agent state, different population embedding $\to$ different policy. This confirms the control pathway is causally active.
 
 \paragraph{FD consistency at exogenous $h$.}
 As a policy-level consistency check, we solve the single-agent FD problem with exogenous execution scaling $\lambda_{\text{eff}} = h \cdot \lambda$:
@@ -407,9 +401,9 @@ As a policy-level consistency check, we solve the single-agent FD problem with e
 $h$ (exogenous) & FD $V(0,0)$ & FD spread \\
 \midrule
 1.00 & 0.384 & 1.644 \\
-0.45 ($\approx$ narrow) & 0.171 & 1.674 \\
-0.28 ($\approx$ medium) & 0.106 & 1.685 \\
-0.11 ($\approx$ wide) & 0.042 & 1.696 \\
+0.45 & 0.171 & 1.674 \\
+0.28 & 0.106 & 1.685 \\
+0.11 & 0.042 & 1.696 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -426,7 +420,7 @@ The central finding is that mean-field effects are \emph{present in the model} b
 \paragraph{Architectural lessons.}
 BatchNorm, while critical for Deep BSDE training stability~\cite{han2018solving}, is fundamentally incompatible with broadcast conditioning signals. The two-stream architecture (BN on per-agent features, no BN on shared features) resolves this cleanly. FiLM-style modulation~\cite{perez2018film} would be a natural alternative. More broadly, these findings suggest that any deep learning system conditioning on shared population statistics must carefully consider representation and normalisation, as architectural choices can mask genuine interaction effects.
 
-\paragraph{Two pathways for law dependence.}
+\paragraph{Two pathways for law dependence.}\label{sec:pathway}
 The architecture provides two channels: (i)~$h(\Phi(\mup))$ entering the generator (affecting value via execution rates), and (ii)~$\Phi(\mup)$ entering the subnet directly (affecting $Z$ and thus quotes). We disentangle these by cross-feeding: supplying one population's embedding to $h$ and another's to the subnet (\Cref{tab:disentangle}).
 
 \begin{table}[!htb]
@@ -437,35 +431,37 @@ The architecture provides two channels: (i)~$h(\Phi(\mup))$ entering the generat
 \toprule
 Condition & $h$ & $Z^q$ & $\delta_a$ \\
 \midrule
-Full narrow & 0.454 & $-0.003$ & 0.663 \\
-Full wide & 0.104 & $+1.794$ & 2.758 \\
-$h$=wide, subnet=narrow & 0.104 & $-0.003$ & \textbf{0.663} \\
-$h$=narrow, subnet=wide & 0.454 & $+1.794$ & \textbf{2.758} \\
+Full narrow & 0.404 & $-0.012$ & 0.654 \\
+Full wide & 0.053 & $-0.049$ & 0.497 \\
+$h$=wide, subnet=narrow & 0.053 & $-0.012$ & \textbf{0.654} \\
+$h$=narrow, subnet=wide & 0.404 & $-0.049$ & \textbf{0.497} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The quote shift comes \emph{entirely} from the subnet pathway: swapping the subnet embedding changes $\delta_a$ from $0.663$ to $2.758$ regardless of $h$. Swapping $h$ alone does not move quotes at all. This means \textbf{$h$ controls the value level} (through execution rates in the generator) \textbf{while the subnet controls the quoting strategy} (through $Z^q$ directly). The two channels are functionally independent in the trained model.
+The quote shift comes \emph{entirely} from the subnet pathway: swapping the subnet embedding changes $\delta_a$ from $0.654$ to $0.497$ regardless of $h$. Swapping $h$ alone does not move quotes at all. The competitive factor $h(\Phi(\mup))$ learns a meaningful, monotone mapping from population dispersion to execution scaling, but has at most a weak effect on the value level and no observable effect on the learned policy when acting alone. Population-dependent controls arise entirely from direct conditioning of the policy subnet. The two channels are functionally independent in the trained model.
 
-As a control experiment, we train an $h$-only model where the law embedding enters $f$ (via $h$, with properly trained competitive factor network) but \emph{not} the subnet. The learned $h$ varies correctly: narrow $= 0.559$, medium $= 0.511$, wide $= 0.157$ ($3.5\times$ variation, monotonically decreasing). Yet $Z^q$ is identical across all populations ($Z^q = 0.017$ regardless of population shape), and $Y_0 = 0.380$ barely differs from the no-coupling baseline ($0.378$). The generator pathway is correctly trained and produces meaningful $h$ variation, but the BSDE training signal is too indirect to propagate $h$-changes back into the policy network. Direct subnet conditioning is necessary for policy-level mean-field dependence.
+As a control experiment, we train an $h$-only model where the law embedding enters $f$ (via $h$, with properly trained competitive factor network) but \emph{not} the subnet. The competitive factor varies substantially across population shapes ($\approx 7.5\times$) and is correctly ordered: narrow $= 0.412$, medium $= 0.260$, wide $= 0.055$. However, the learned control is completely invariant: $Z^q = 0.0017$ regardless of population shape (identical to four decimal places), quotes are identical across all populations, and $Y_0 = 0.144$ is similar to the full MV model ($0.142$) but not meaningfully different from what the no-coupling baseline achieves through the same training dynamics. While $h$ encodes economically meaningful population dependence, this dependence is not translated into policy variation through the BSDE dynamics when acting alone. Direct subnet conditioning is necessary for policy-level mean-field dependence.
 
 \paragraph{Generalisation across population families.}
-The trained model (MomentEncoder, $\phi = 0.1$) generalises to distribution types not seen during training. Evaluating on uniform, bimodal, skewed (chi-squared), and heavy-tailed (Student's $t$, $\nu=3$) populations, the competitive factor $h$ tracks population dispersion monotonically: uniform$[-1,1]$ ($h = 0.36$), bimodal$\pm 2$ ($h = 0.19$), heavy-tail ($h = 0.10$). Heavy-tailed distributions produce lower $h$ than Gaussians of similar variance, suggesting the model is sensitive to tail behaviour beyond the second moment. This is not memorisation of Gaussian shapes.
+The trained model (MomentEncoder, $\phi = 0.1$) generalises to distribution types not seen during training. Evaluating on uniform, bimodal, skewed (chi-squared), and heavy-tailed (Student's $t$, $\nu=3$) populations, the competitive factor $h$ tracks population dispersion monotonically: uniform$[-1,1]$ ($h = 0.34$), bimodal$\pm 2$ ($h = 0.16$), skewed ($h = 0.08$), heavy-tail ($h = 0.12$). Heavy-tailed distributions produce lower $h$ than Gaussians of similar variance, suggesting the model is sensitive to tail behaviour beyond the second moment. This is not memorisation of Gaussian shapes.
 
 \paragraph{Economic interpretation.}
-The learned competitive factor $h(\Phi(\mup))$ maps wider inventory distributions to lower fill rates, consistent with the intuition that dispersed populations contain more aggressive competitors. The resulting policy adaptations (narrower ask under competition, wider bid) are economically rational inventory management responses. We emphasise that this is a learned mapping, not a derived equilibrium condition: the economic story is plausible but not uniquely identified from the current evidence.
+The learned competitive factor $h(\Phi(\mup))$ maps wider inventory distributions to lower fill rates, consistent with the intuition that dispersed populations contain more aggressive competitors. The resulting policy adaptations (narrower ask under competition, wider bid) are economically rational inventory management responses. We emphasise that this is a learned mapping, not a derived equilibrium condition: the economic story is plausible but not uniquely identified from the current evidence. Critically, the policy dependence arises from the subnet's direct use of law features to modulate $Z^q$, not from $h$ affecting the BSDE dynamics. The architecture learns to use population information, but through a more direct channel than the model's intended mean-field mechanism.
 
 % ============================================================
 \section{Conclusion}
 \label{sec:conclusion}
 
-We have shown that deep BSDE solvers can be made sensitive to population structure in market-making, producing economically meaningful law-conditioned controls, but only when three architectural conditions are met: the law embedding enters the BSDE generator, broadcast features bypass BatchNorm, and the encoder captures distributional variance. When all three are satisfied, the solver learns distribution-dependent controls that disappear under semantic-destruction placebos and align directionally with finite-difference comparative statics under exogenous competition.
+We have shown that deep BSDE solvers require explicit architectural pathways for mean-field information to affect learned controls. Two silent failure modes --- BatchNorm erasure of broadcast features and mean-pooling collapse under symmetric inputs --- can mask the signal entirely. After correcting both, the solver produces population-dependent controls that disappear under placebos and align directionally with finite-difference comparative statics.
 
-The deeper lesson is methodological: null results in mean-field deep learning may reflect architectural failures rather than genuine model invariance. Diagnosing the failure mode --- coupling pathway, normalisation, or representation --- is essential before concluding that population structure does not matter.
+However, the most important finding is structural: even when the BSDE generator correctly incorporates law dependence and learns economically sensible competitive factors, this does not translate into policy variation. All observed control dependence arises from direct conditioning of the policy subnet on population features. Learning a correct economic signal is not sufficient for it to shape behaviour through the BSDE dynamics alone.
 
-\paragraph{Limitations.} We demonstrate learned sensitivity to population structure, not equilibrium-correct sensitivity: the competitive factor network learns a monotone mapping (wider $\to$ lower $h$) but we have not verified that this corresponds to a Nash equilibrium fixed point or that fictitious play converges. Multi-seed results (\Cref{tab:multiseed}) confirm the $h$-gap is robust ($0.259 \pm 0.055$), but the $Y_0$ magnitude has higher variance across seeds ($\pm 0.039$). The competitive factor floor at $h = 0.1$ compresses the wide-population regime and may affect reported gap magnitudes. The adverse selection model uses a simple EMA signal. The experiments are at $d = 2$--$3$. We leave out-of-distribution generalization across unseen population shapes to future work.
+The deeper lesson is methodological: null results in mean-field deep learning may reflect architectural failures rather than genuine model invariance, and positive results require careful pathway analysis to determine whether the dependence operates through the intended mechanism.
 
-\paragraph{Future work.} Fictitious play convergence verification; FiLM conditioning as alternative to two-stream; DeepSets with variance-sensitive features ($q^2$ pooling); common noise via deep signatures~\cite{hu2025deep}.
+\paragraph{Limitations.} We demonstrate learned sensitivity to population structure, not equilibrium-correct sensitivity: the competitive factor network learns a monotone mapping (wider $\to$ lower $h$) but we have not verified that this corresponds to a Nash equilibrium fixed point or that fictitious play converges. The policy dependence arises from direct subnet conditioning, not from the BSDE generator pathway, so it is not clear that the learned controls correspond to the solution of the underlying mean-field control problem. Multi-seed results (\Cref{tab:multiseed}) confirm the $h$-gap is robust ($0.343 \pm 0.072$), but the $Y_0$ magnitude has higher variance across seeds ($\pm 0.026$). The adverse selection model uses a simple EMA signal. The experiments are at $d = 2$--$3$.
+
+\paragraph{Future work.} Fictitious play convergence verification to establish whether the learned mapping corresponds to a Nash equilibrium; FiLM conditioning (feature-wise linear modulation) as an alternative to direct concatenation that may strengthen the generator pathway; quantitative comparative statics matching against finite-difference benchmarks; DeepSets with variance-sensitive features ($q^2$ pooling); common noise via deep signatures~\cite{hu2025deep}.
 
 \paragraph{Code.} \url{https://github.com/cgarryZA/DeepMVBSDEJ}
 

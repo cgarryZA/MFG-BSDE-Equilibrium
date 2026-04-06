@@ -38,9 +38,9 @@ class CompetitiveFactorNet(nn.Module):
         )
 
     def forward(self, law_embed):
-        """law_embed: [embed_dim] -> scalar h in (0, 1]."""
-        # Add small offset so h is never exactly 0
-        return 0.1 + 0.9 * self.net(law_embed)
+        """law_embed: [embed_dim] -> scalar h in (0.01, 1]."""
+        # Small epsilon to avoid exact zero; no artificial floor
+        return 0.01 + 0.99 * self.net(law_embed)
 
 
 @register_equation("contxiong_lob_mv")

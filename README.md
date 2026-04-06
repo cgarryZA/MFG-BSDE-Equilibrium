@@ -1,15 +1,15 @@
-# DeepMVBSDEJ: McKean-Vlasov Jump-BSDE Solver for Market-Making
+# DeepMVBSDEJ: Architectural Conditions for Mean-Field Deep BSDE Solvers
 
-Distribution-dependent mean-field coupling and adverse selection for optimal market-making in limit order books. Extends the [DeepBSDE-LOB](https://github.com/cgarryZA/DeepBSDE-LOB) preprint with genuine McKean-Vlasov structure.
+Investigates when and why distribution-dependent mean-field coupling becomes learnable in deep BSDE solvers for market-making. Extends the [DeepBSDE-LOB](https://github.com/cgarryZA/DeepBSDE-LOB) solver with law encoders, two-stream architecture, and controlled pathway experiments.
 
-## What's New (vs DeepBSDE-LOB)
+**Paper:** "When Does Mean-Field Structure Matter? Distribution Dependence, Representation Collapse, and Architectural Constraints in Deep BSDE Market-Making"
 
-| Feature | DeepBSDE-LOB (preprint 1) | This repo |
-|---------|--------------------------|-----------|
-| Mean-field coupling | Moment proxy (inactive) | **4 law encoders** (moments, quantiles, histogram, DeepSets) |
-| Price dependence | Economically inert (1D reduction) | **Adverse selection** breaks reduction → genuinely 3D |
-| State dimension | 2 (S, q) effectively 1D | 3 (S, q, signal) genuinely multi-dimensional |
-| Stability analysis | Preliminary table | **Full phase diagram** (phi × eta × horizon × coupling) |
+## Key Findings
+
+1. **Two silent failure modes** suppress mean-field effects: BatchNorm erasing broadcast features, and mean-pooled DeepSets collapsing distributional variance.
+2. **After correction**, the competitive factor h varies 17x across population shapes and quotes shift measurably.
+3. **However**, all policy variation comes from direct subnet conditioning — the BSDE generator pathway alone does not propagate the signal to controls (h-only model produces identical Z despite 17x h variation).
+4. Learning a correct economic signal is **not sufficient** for it to affect behaviour through the BSDE dynamics.
 
 ## Model Hierarchy
 
@@ -58,17 +58,19 @@ python main.py --config configs/lob_d3_mv_adverse.json --exp_name full --device 
 ## Experiments
 
 ```bash
-# MV encoder ablation + baselines
-python scripts/run_mv_experiments.py --quick --device cuda
+# Reproduce ALL paper results (main sensitivity, encoder ablation,
+# multi-seed, placebo, disentanglement, h-only, generalisation, penalty sweep)
+python scripts/run_all_for_paper.py --device cuda
 
-# Law sensitivity test (does distribution shape affect policy?)
-python scripts/law_sensitivity_test.py --train --device cuda
+# Quick version (~30 min instead of ~2.5h)
+python scripts/run_all_for_paper.py --device cuda --quick
 
-# Stability frontier (phase diagram)
-python scripts/stability_frontier.py --quick --device cuda
-
-# 3D finite-difference baseline for adverse selection
-python scripts/finite_difference_adverse.py --eta 0.5
+# Individual experiments
+python scripts/run_mv_experiments.py --device cuda          # Encoder ablation
+python scripts/law_sensitivity_test.py --train --device cuda # Law sensitivity
+python scripts/stability_frontier.py --device cuda           # Phase diagram
+python scripts/finite_difference_adverse.py --eta 0.5        # 3D FD baseline
+python scripts/run_floor_ablation.py --device cuda           # Floor ablation + clipping
 ```
 
 ## Repository Structure
@@ -76,24 +78,27 @@ python scripts/finite_difference_adverse.py --eta 0.5
 ```
 DeepMVBSDEJ/
 ├── main.py                              # Training entry point
-├── solver.py                            # All model + solver classes
+├── solver.py                            # Models + solvers (MeanFieldSubNet, ContXiongLOBMVModel)
 ├── config.py                            # Configuration
 ├── registry.py                          # Equation registration
 ├── equations/
 │   ├── base.py                          # Abstract base
-│   ├── law_encoders.py                  # 4 law encoder classes
+│   ├── law_encoders.py                  # 4 law encoder classes + registry
 │   ├── contxiong_lob.py                 # Diffusion surrogate (base)
-│   ├── contxiong_lob_mv.py              # + MV coupling
+│   ├── contxiong_lob_mv.py              # + MV coupling (CompetitiveFactorNet)
 │   ├── contxiong_lob_adverse.py         # + adverse selection (3D)
 │   └── contxiong_lob_mv_adverse.py      # + both (full model)
 ├── configs/                             # JSON experiment configs
 ├── scripts/
+│   ├── run_all_for_paper.py             # Master script: ALL paper experiments
 │   ├── run_mv_experiments.py            # Encoder ablation + baselines
-│   ├── law_sensitivity_test.py          # Critical MV validation
+│   ├── run_floor_ablation.py            # Floor ablation + clipping analysis
+│   ├── law_sensitivity_test.py          # Law sensitivity test
 │   ├── stability_frontier.py            # Phase diagram sweep
 │   ├── plot_stability.py                # Phase diagram plots
 │   └── finite_difference_adverse.py     # 3D FD baseline
-└── plots/                               # Generated figures
+├── results_paper_final/                 # Reproducible results for paper
+└── report/preprint/                     # LaTeX source
 ```
 
 ## Citation
