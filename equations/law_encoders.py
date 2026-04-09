@@ -17,17 +17,19 @@ import numpy as np
 class MomentEncoder(nn.Module):
     """Encodes mu_t via low-order moments of inventory q.
 
-    Features: [mean(q), var(q), skew(q), mean(|q|), max(|q|), std(q)]
-    Output dim: 6
+    For single-asset (state_dim=2): uses col 1 (q). Output dim: 6.
+    For multi-asset (state_dim=2K): uses cols K..2K-1. Output dim: 6*K.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, state_dim=2, **kwargs):
         super().__init__()
-        self.embed_dim = 6
+        self.state_dim = state_dim
+        n_assets = max(state_dim // 2, 1)
+        self.embed_dim = 6 * n_assets
+        self.n_assets = n_assets
 
-    def encode(self, particles):
-        """particles: [batch, 2] where col 1 is q. Returns [embed_dim]."""
-        q = particles[:, 1]  # inventory column
+    def _moments_1d(self, q):
+        """6 moments of a 1D inventory vector."""
         n = q.shape[0]
         mean_q = torch.mean(q)
         var_q = torch.var(q) if n > 1 else torch.tensor(0.0, dtype=q.dtype, device=q.device)
@@ -36,6 +38,15 @@ class MomentEncoder(nn.Module):
         mean_abs_q = torch.mean(torch.abs(q))
         max_abs_q = torch.max(torch.abs(q))
         return torch.stack([mean_q, var_q, skew_q, mean_abs_q, max_abs_q, std_q])
+
+    def encode(self, particles):
+        """particles: [batch, state_dim]. Returns [embed_dim]."""
+        K = self.n_assets
+        feats = []
+        for k in range(K):
+            q_k = particles[:, K + k] if particles.shape[1] > 2 else particles[:, 1]
+            feats.append(self._moments_1d(q_k))
+        return torch.cat(feats)
 
 
 class QuantileEncoder(nn.Module):

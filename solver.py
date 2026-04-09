@@ -82,6 +82,105 @@ class MeanFieldSubNet(nn.Module):
         return s + l
 
 
+class FiLMSubNet(nn.Module):
+    """FiLM-conditioned subnet: law embedding modulates state activations.
+
+    Instead of Z = f(state) + g(law) (additive, no interaction),
+    FiLM computes Z = Dense(ReLU(gamma(law) * BN(Dense(state)) + beta(law))).
+
+    This allows the law embedding to change HOW state maps to Z,
+    not just shift the output. The cross-partial d2Z/(dq * d_law)
+    can be nonzero, unlike the additive two-stream architecture.
+    """
+
+    def __init__(self, num_hiddens, state_dim, law_dim, dim_out, dtype=torch.float64):
+        super().__init__()
+        self.state_dim = state_dim
+        self.law_dim = law_dim
+        hidden = num_hiddens[0] if num_hiddens else 32
+
+        # State stream (with BN, same as MeanFieldSubNet)
+        self.state_bn_in = nn.BatchNorm1d(state_dim, momentum=0.01, eps=1e-6, dtype=dtype)
+        nn.init.normal_(self.state_bn_in.bias, mean=0.0, std=0.1)
+        nn.init.uniform_(self.state_bn_in.weight, 0.1, 0.5)
+        self.state_dense1 = nn.Linear(state_dim, hidden, bias=False, dtype=dtype)
+        self.state_bn1 = nn.BatchNorm1d(hidden, momentum=0.01, eps=1e-6, dtype=dtype)
+        nn.init.normal_(self.state_bn1.bias, mean=0.0, std=0.1)
+        nn.init.uniform_(self.state_bn1.weight, 0.1, 0.5)
+
+        # FiLM generator: law_embed -> (gamma, beta) for hidden layer
+        self.film_net = nn.Sequential(
+            nn.Linear(law_dim, hidden, dtype=dtype),
+            nn.ReLU(),
+            nn.Linear(hidden, 2 * hidden, dtype=dtype),  # first half = gamma, second = beta
+        )
+        # Initialize so FiLM starts as identity: gamma=1, beta=0
+        with torch.no_grad():
+            self.film_net[-1].weight.zero_()
+            self.film_net[-1].bias[:hidden] = 1.0   # gamma = 1
+            self.film_net[-1].bias[hidden:] = 0.0   # beta = 0
+
+        # Output layer
+        self.state_dense2 = nn.Linear(hidden, dim_out, dtype=dtype)
+
+    def forward(self, x):
+        state = x[:, :self.state_dim]
+        law = x[:, self.state_dim:]
+        hidden = self.state_dense2.in_features
+
+        # State stream up to BN1
+        s = self.state_bn_in(state)
+        s = self.state_dense1(s)
+        s = self.state_bn1(s)
+
+        # FiLM modulation
+        film_params = self.film_net(law)
+        gamma = film_params[:, :hidden]
+        beta = film_params[:, hidden:]
+        s = gamma * s + beta
+
+        # ReLU + output
+        s = torch.relu(s)
+        return self.state_dense2(s)
+
+
+class FiLMPlusAdditiveSubNet(nn.Module):
+    """FiLM modulation + additive law stream (for ablation).
+
+    Output = FiLM_path(state, law) + additive_path(law)
+    This tests whether additive and multiplicative channels carry
+    complementary information.
+    """
+
+    def __init__(self, num_hiddens, state_dim, law_dim, dim_out, dtype=torch.float64):
+        super().__init__()
+        self.film = FiLMSubNet(num_hiddens, state_dim, law_dim, dim_out, dtype=dtype)
+        hidden = num_hiddens[0] if num_hiddens else 32
+        self.additive = nn.Sequential(
+            nn.Linear(law_dim, hidden, dtype=dtype),
+            nn.ReLU(),
+            nn.Linear(hidden, dim_out, dtype=dtype),
+        )
+
+    def forward(self, x):
+        return self.film(x) + self.additive(x[:, self.film.state_dim:])
+
+
+# Subnet factory for MV models
+SUBNET_REGISTRY = {
+    "two_stream": MeanFieldSubNet,
+    "film": FiLMSubNet,
+    "film_additive": FiLMPlusAdditiveSubNet,
+}
+
+
+def create_mv_subnet(subnet_type, num_hiddens, state_dim, law_dim, dim_out, dtype=torch.float64):
+    """Create a subnet for MV models by type name."""
+    if subnet_type not in SUBNET_REGISTRY:
+        raise ValueError(f"Unknown subnet_type '{subnet_type}'. Options: {list(SUBNET_REGISTRY.keys())}")
+    return SUBNET_REGISTRY[subnet_type](num_hiddens, state_dim, law_dim, dim_out, dtype=dtype)
+
+
 class FeedForwardSubNet(nn.Module):
     """BN -> (Dense(no bias) -> BN -> ReLU) x L -> Dense -> BN
 
@@ -1386,7 +1485,9 @@ class ContXiongLOBMVModel(nn.Module):
         # Subnet input: own state (dim) + law embedding (law_dim)
         state_dim = bsde.dim  # 2 for base, 3 for adverse selection
         subnet_in = state_dim + law_dim
-        subnet_out = state_dim  # (Z^S, Z^q) or (Z^S, Z^q, Z^sig)
+        # Jump models output extra U_a, U_b coefficients
+        subnet_out = getattr(bsde, 'subnet_output_dim', state_dim)
+        self._is_jump = hasattr(bsde, 'subnet_output_dim') and bsde.subnet_output_dim > state_dim
 
         self.y_init = nn.Parameter(
             torch.tensor(
@@ -1400,15 +1501,17 @@ class ContXiongLOBMVModel(nn.Module):
         )
         self.z_init = nn.Parameter(
             torch.tensor(
-                np.random.uniform(low=-0.1, high=0.1, size=[1, state_dim]),
+                np.random.uniform(low=-0.1, high=0.1, size=[1, subnet_out]),
                 dtype=dtype,
             )
         )
-        # Use MeanFieldSubNet: BN on state features only, raw law features
+        # Select subnet architecture based on config
+        subnet_type = getattr(self.eqn_config, 'subnet_type', 'two_stream')
         self.subnet = nn.ModuleList(
             [
-                MeanFieldSubNet(
-                    self.net_config.num_hiddens, state_dim, law_dim, subnet_out, dtype=dtype,
+                create_mv_subnet(
+                    subnet_type, self.net_config.num_hiddens,
+                    state_dim, law_dim, subnet_out, dtype=dtype,
                 )
                 for _ in range(bsde.num_time_interval - 1)
             ]
@@ -1448,17 +1551,35 @@ class ContXiongLOBMVModel(nn.Module):
             law_embed = self.law_encoder.encode(particles_t)  # [law_dim]
             # Broadcast to all agents: [batch, law_dim]
             law_embed_batch = law_embed.unsqueeze(0).expand(batch_size, -1)
-            law_embeddings.append(law_embed.detach().cpu().numpy())
+            # Skip storing law embeddings to avoid CUDA memory issues in long runs
 
             # SET LAW EMBEDDING so f_tf uses it for competitive factor
             if hasattr(self.bsde, 'set_current_law_embed'):
                 self.bsde.set_current_law_embed(law_embed)
 
+            # For CX model: compute population average quotes from current Z
+            if hasattr(self.bsde, 'set_population_quotes'):
+                z_q_batch = z[:, 1:2]  # current Z_q for all agents
+                da_batch, db_batch = self.bsde._optimal_quotes_tf(z_q_batch)
+                self.bsde.set_population_quotes(
+                    torch.mean(da_batch).detach(),
+                    torch.mean(db_batch).detach(),
+                )
+
+            # For jump models: split z into diffusion part (Z) and jump part (U)
+            if self._is_jump:
+                z_diffusion = z[:, :self.bsde.dim]  # (Z_s, Z_q)
+                z_jump = z[:, self.bsde.dim:]        # (U_a, U_b)
+                if hasattr(self.bsde, 'set_current_jump_coeffs'):
+                    self.bsde.set_current_jump_coeffs(z_jump)
+            else:
+                z_diffusion = z
+
             # BSDE step (f_tf now uses h(Phi(mu_t)) not old scalar proxy)
             y = (
                 y
-                - self.bsde.delta_t * self.bsde.f_tf(time_stamp[t], x[:, :, t], y, z)
-                + torch.sum(z * dw[:, :, t], dim=1, keepdim=True)
+                - self.bsde.delta_t * self.bsde.f_tf(time_stamp[t], x[:, :, t], y, z_diffusion)
+                + torch.sum(z_diffusion * dw[:, :, t], dim=1, keepdim=True)
             )
             mean_y.append(torch.mean(y))
 
@@ -1474,7 +1595,14 @@ class ContXiongLOBMVModel(nn.Module):
             z = self.subnet[t](subnet_input) / self.bsde.dim
 
         # Terminal step — set law embedding for final f_tf call
-        z_q = z[:, 1:2]
+        if self._is_jump:
+            z_diffusion = z[:, :self.bsde.dim]
+            z_jump = z[:, self.bsde.dim:]
+            if hasattr(self.bsde, 'set_current_jump_coeffs'):
+                self.bsde.set_current_jump_coeffs(z_jump)
+        else:
+            z_diffusion = z
+        z_q = z_diffusion[:, 1:2]
         delta_a, delta_b = self.bsde._optimal_quotes_tf(z_q)
         mean_spreads.append((torch.mean(delta_a) + torch.mean(delta_b)).item())
         mean_inventories.append(torch.mean(x[:, 1, -2]).item())
@@ -1488,8 +1616,8 @@ class ContXiongLOBMVModel(nn.Module):
         y = (
             y
             - self.bsde.delta_t
-            * self.bsde.f_tf(time_stamp[-1], x[:, :, -2], y, z)
-            + torch.sum(z * dw[:, :, -1], dim=1, keepdim=True)
+            * self.bsde.f_tf(time_stamp[-1], x[:, :, -2], y, z_diffusion)
+            + torch.sum(z_diffusion * dw[:, :, -1], dim=1, keepdim=True)
         )
 
         self._last_mean_spreads = mean_spreads
@@ -1665,4 +1793,232 @@ class ContXiongLOBMVSolver:
             "y0": self.y_init.item(),
             "final_loss": val_loss.item(),
             "w2_history": w2_history,
+        }
+
+    def compute_diagnostics(self):
+        """Compute stability diagnostics on the trained model.
+
+        Returns:
+            lipschitz_z: max |dZ/dq| over q grid (Lipschitz constant of Z)
+            z_profile: Z_q values at each q point
+            path_stats: terminal state variance from sampled paths
+            grad_norm: total gradient norm of model parameters
+        """
+        self.model.eval()
+        device = self.device
+        bsde = self.bsde
+
+        # 1. Lipschitz(Z) — evaluate Z_q on a q grid
+        q_vals = np.linspace(-4, 4, 50)
+        pop = np.stack([np.full(256, 100.0),
+                        np.clip(np.random.normal(0, 1.0, 256), -10, 10)], axis=1)
+        particles = torch.tensor(pop, dtype=torch.float64, device=device)
+        law_embed = self.model.law_encoder.encode(particles)
+        leb = law_embed.unsqueeze(0)
+
+        zqs = []
+        with torch.no_grad():
+            for q in q_vals:
+                agent = torch.tensor([[100.0, q]], dtype=torch.float64, device=device)
+                si = torch.cat([agent, leb], dim=1)
+                z = self.model.subnet[0](si) / bsde.dim
+                zqs.append(z[:, 1].item())
+        zqs = np.array(zqs)
+        dz = np.abs(np.diff(zqs))
+        dq = np.abs(np.diff(q_vals))
+        lip_z = float(np.max(dz / dq)) if len(dq) > 0 else 0.0
+
+        # 2. Path variance
+        dw, x = bsde.sample(512)
+        var_q = float(np.var(x[:, 1, -1]))
+        var_s = float(np.var(x[:, 0, -1]))
+        max_q = float(np.max(np.abs(x[:, 1, -1])))
+
+        # 3. Gradient norm (from last training step)
+        total_norm = 0.0
+        for p in self.model.parameters():
+            if p.grad is not None:
+                total_norm += p.grad.data.norm(2).item() ** 2
+        grad_norm = total_norm ** 0.5
+
+        return {
+            "lipschitz_z": lip_z,
+            "z_max": float(np.max(np.abs(zqs))),
+            "var_q_T": var_q,
+            "var_s_T": var_s,
+            "max_abs_q_T": max_q,
+            "grad_norm": grad_norm,
+            "z_profile": zqs.tolist(),
+            "q_grid": q_vals.tolist(),
+        }
+
+
+# =====================================================================
+# Fictitious Play Solver
+# =====================================================================
+
+
+class FictitiousPlaySolver:
+    """Outer fictitious play loop for mean-field equilibrium.
+
+    Following Han, Hu, Long (2022):
+    1. Initialize population distribution (from bsde.sample() proxy)
+    2. Train inner BSDE solver given current population
+    3. Simulate population under learned policy
+    4. Update population (damped)
+    5. Check W2 convergence
+    """
+
+    def __init__(self, config, bsde, device=None,
+                 outer_iterations=20, inner_iterations=2000,
+                 w2_threshold=0.01, damping_alpha=0.5,
+                 n_sim_agents=256, warm_start=True):
+        self.config = config
+        self.bsde = bsde
+        self.device = device or torch.device("cpu")
+        self.outer_iterations = outer_iterations
+        self.inner_iterations = inner_iterations
+        self.w2_threshold = w2_threshold
+        self.damping_alpha = damping_alpha
+        self.n_sim_agents = n_sim_agents
+        self.warm_start = warm_start
+
+        # Current population: terminal inventories from proxy simulation
+        dw, x = bsde.sample(n_sim_agents)
+        # x is [batch, dim, T+1] — terminal inventory
+        self.current_q = x[:, 1, -1].copy()  # [n_sim_agents]
+
+    def _simulate_population(self, model, bsde):
+        """Forward-simulate SDE using trained subnet Z predictions.
+
+        Unlike bsde.sample() which uses proxy z_q = -2*phi*q,
+        this uses the actual learned Z from the neural network.
+        """
+        model.eval()
+        device = self.device
+        n = self.n_sim_agents
+        dt = bsde.delta_t
+        n_steps = bsde.num_time_interval
+
+        # Initialize
+        S = np.full(n, bsde.s_init)
+        q = self.current_q.copy()  # Start from current population
+
+        with torch.no_grad():
+            for t in range(n_steps):
+                # Build particles tensor
+                particles = np.stack([S, q], axis=1)  # [n, 2]
+                particles_t = torch.tensor(particles, dtype=torch.float64, device=device)
+
+                # Law embedding
+                law_embed = model.law_encoder.encode(particles_t)
+                law_batch = law_embed.unsqueeze(0).expand(n, -1)
+
+                # Set law embed for h computation
+                if hasattr(bsde, 'set_current_law_embed'):
+                    bsde.set_current_law_embed(law_embed)
+                h = bsde.compute_competitive_factor(law_embed).item()
+
+                # Subnet input: [n, state_dim + law_dim]
+                state_t = torch.tensor(particles, dtype=torch.float64, device=device)
+                if getattr(model, 'h_only_mode', False):
+                    zero_law = torch.zeros(n, law_batch.shape[1], dtype=torch.float64, device=device)
+                    si = torch.cat([state_t, zero_law], dim=1)
+                else:
+                    si = torch.cat([state_t, law_batch], dim=1)
+
+                # Get Z from subnet (use first subnet — they share architecture)
+                z = model.subnet[min(t, len(model.subnet) - 1)](si) / bsde.dim
+                z_q = z[:, 1].cpu().numpy()  # [n]
+
+                # Optimal quotes
+                sigma_q = bsde._sigma_q_equilibrium()
+                p = z_q / sigma_q
+                delta_a = 1.0 / bsde.alpha + p
+                delta_b = 1.0 / bsde.alpha - p
+
+                # Execution rates
+                f_a = bsde._exec_prob_np(delta_a, h) * bsde.lambda_a
+                f_b = bsde._exec_prob_np(delta_b, h) * bsde.lambda_b
+
+                # SDE step
+                dW_S = np.random.normal(0, np.sqrt(dt), n)
+                dW_q = np.random.normal(0, np.sqrt(dt), n)
+
+                S = S + bsde.sigma_s * dW_S
+                inv_drift = (f_b - f_a) * dt
+                inv_diff = np.sqrt(np.maximum(f_b + f_a, 1e-8)) * dW_q
+                q = q + inv_drift + inv_diff
+                q = np.clip(q, -bsde.q_max, bsde.q_max)
+
+        return q  # Terminal inventories
+
+    def _compute_w2(self, q_old, q_new):
+        """Sorted 1D Wasserstein-2 distance."""
+        q1 = np.sort(q_old)
+        q2 = np.sort(q_new)
+        n = min(len(q1), len(q2))
+        return float(np.sqrt(np.mean((q1[:n] - q2[:n]) ** 2)))
+
+    def train(self):
+        """Run the full fictitious play loop."""
+        history = []
+        solver = None
+
+        for k in range(self.outer_iterations):
+            print(f"\n--- FP outer iteration {k+1}/{self.outer_iterations} ---")
+
+            # Create or warm-start inner solver
+            if solver is None or not self.warm_start:
+                solver = ContXiongLOBMVSolver(self.config, self.bsde, device=self.device)
+            # Set inner iteration count
+            solver.opt_config.num_iterations = self.inner_iterations
+
+            # Train inner solver
+            result = solver.train()
+            y0 = result["y0"]
+            loss = result["final_loss"]
+
+            # Evaluate h at current population
+            model = solver.model
+            model.eval()
+            pop = np.stack([np.full(self.n_sim_agents, self.bsde.s_init), self.current_q], axis=1)
+            particles = torch.tensor(pop, dtype=torch.float64, device=self.device)
+            law_embed = model.law_encoder.encode(particles)
+            with torch.no_grad():
+                h = self.bsde.compute_competitive_factor(law_embed).item()
+
+            # Simulate population under learned policy
+            q_simulated = self._simulate_population(model, self.bsde)
+
+            # Damped update
+            q_new = self.damping_alpha * q_simulated + (1.0 - self.damping_alpha) * self.current_q
+
+            # W2 distance
+            w2 = self._compute_w2(self.current_q, q_new)
+
+            # Store
+            entry = {
+                "iteration": k + 1,
+                "y0": y0, "loss": loss, "h": h,
+                "w2": w2,
+                "q_mean": float(np.mean(q_new)),
+                "q_std": float(np.std(q_new)),
+            }
+            history.append(entry)
+            print(f"  Y0={y0:.4f}, h={h:.4f}, W2={w2:.6f}, q_std={np.std(q_new):.4f}")
+
+            # Update population
+            self.current_q = q_new
+
+            # Check convergence
+            if w2 < self.w2_threshold:
+                print(f"\n  CONVERGED at iteration {k+1} (W2={w2:.6f} < {self.w2_threshold})")
+                break
+
+        return {
+            "history": history,
+            "converged": history[-1]["w2"] < self.w2_threshold if history else False,
+            "final_y0": history[-1]["y0"] if history else None,
+            "final_w2": history[-1]["w2"] if history else None,
         }

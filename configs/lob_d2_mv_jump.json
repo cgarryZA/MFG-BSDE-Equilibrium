@@ -1,0 +1,44 @@
+{
+  "_comment": "MV LOB with discrete inventory jumps (proper FBSDEJ). Should match FD spread.",
+  "eqn_config": {
+    "eqn_name": "contxiong_lob_jump",
+    "type": 3,
+    "total_time": 1.0,
+    "dim": 2,
+    "num_time_interval": 50,
+    "sigma_s": 0.3,
+    "lambda_a": 1.0,
+    "lambda_b": 1.0,
+    "alpha": 1.5,
+    "phi": 0.1,
+    "discount_rate": 0.1,
+    "q_max": 10.0,
+    "s_init": 100.0,
+    "couple_coeff": 1.0,
+    "num_hiddens": [24, 24],
+    "N_simu": 500,
+    "N_learn": 500,
+    "drift_approx": "nn",
+    "law_encoder_type": "moments",
+    "law_embed_dim": 16,
+    "n_bins": 20,
+    "subnet_type": "two_stream",
+    "Delta_q": 1.0
+  },
+  "net_config": {
+    "loss_type": "DeepBSDE",
+    "y_init_range": [-0.1, 0.1],
+    "num_hiddens": [32, 32],
+    "batch_size": 256,
+    "valid_size": 2048,
+    "logging_frequency": 100,
+    "dtype": "float64",
+    "opt_config1": {
+      "freq_resample": 20,
+      "freq_update_drift": 100,
+      "lr_values": [1e-2, 1e-3, 1e-4],
+      "lr_boundaries": [2000, 4000],
+      "num_iterations": 5000
+    }
+  }
+}

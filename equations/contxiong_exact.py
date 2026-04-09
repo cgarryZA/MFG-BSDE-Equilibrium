@@ -38,36 +38,37 @@ from scipy.optimize import minimize_scalar
 from registry import register_equation
 
 
-def cx_exec_prob_np(delta, avg_competitor_quote, K):
+def cx_exec_prob_np(delta, avg_competitor_quote, K, N=2):
     """CX execution probability (numpy). Eq 58 in mean-field limit.
 
     delta: own quote
     avg_competitor_quote: mean quote across population
-    K: number of competitor inventory levels (for normalisation)
+    K: number of competitor inventory levels
+    N: total number of dealers (for 1/N market share factor)
     """
     base = 1.0 / (1.0 + np.exp(np.clip(delta, -20, 20)))
-    S = avg_competitor_quote * K if K > 0 else 0.0
     if K > 0:
-        comp = np.exp(np.clip(S / K, -20, 20)) / (1.0 + np.exp(np.clip(delta + S / K, -20, 20)))
+        S_over_K = avg_competitor_quote
+        comp = np.exp(np.clip(S_over_K, -20, 20)) / (
+            1.0 + np.exp(np.clip(delta + S_over_K, -20, 20)))
+        return (1.0 / N) * base * comp
     else:
-        comp = base
-    return base * comp
+        return base * base  # monopolist
 
 
-def cx_exec_prob_torch(delta, avg_competitor_quote, K):
+def cx_exec_prob_torch(delta, avg_competitor_quote, K, N=2):
     """CX execution probability (torch). Eq 58 in mean-field limit."""
-    base = torch.sigmoid(-delta)  # 1/(1+exp(delta))
+    base = torch.sigmoid(-delta)
     if K > 0 and avg_competitor_quote is not None:
-        S_over_K = avg_competitor_quote  # already the mean
+        S_over_K = avg_competitor_quote
         comp = torch.exp(torch.clamp(S_over_K, -20, 20)) / (
-            1.0 + torch.exp(torch.clamp(delta + S_over_K, -20, 20))
-        )
+            1.0 + torch.exp(torch.clamp(delta + S_over_K, -20, 20)))
+        return (1.0 / N) * base * comp
     else:
-        comp = base
-    return base * comp
+        return base * base
 
 
-def optimal_quote_foc(p, avg_competitor_quote, K):
+def optimal_quote_foc(p, avg_competitor_quote, K, N=2):
     """Solve FOC for optimal quote given value jump p.
 
     delta* = argmax f(delta, comp) * (delta - p)
@@ -76,7 +77,7 @@ def optimal_quote_foc(p, avg_competitor_quote, K):
     Returns optimal delta.
     """
     def neg_profit(delta):
-        f = cx_exec_prob_np(delta, avg_competitor_quote, K)
+        f = cx_exec_prob_np(delta, avg_competitor_quote, K, N)
         return -(delta - p) * f
 
     result = minimize_scalar(neg_profit, bounds=(-3, 10), method='bounded')
@@ -140,11 +141,11 @@ class ContXiongExact:
 
             # Execution probabilities
             if q > -self.Q:
-                fa = cx_exec_prob_torch(delta_a[j], avg_da, self.K)
+                fa = cx_exec_prob_torch(delta_a[j], avg_da, self.K, self.N_agents)
             else:
                 fa = torch.tensor(0.0)
             if q < self.Q:
-                fb = cx_exec_prob_torch(delta_b[j], avg_db, self.K)
+                fb = cx_exec_prob_torch(delta_b[j], avg_db, self.K, self.N_agents)
             else:
                 fb = torch.tensor(0.0)
 
@@ -191,9 +192,9 @@ class ContXiongExact:
 
             # Optimal ask quote
             if q > -self.Q:
-                delta_a[j] = optimal_quote_foc(p_a, avg_da, self.K)
+                delta_a[j] = optimal_quote_foc(p_a, avg_da, self.K, self.N_agents)
             # Optimal bid quote
             if q < self.Q:
-                delta_b[j] = optimal_quote_foc(p_b, avg_db, self.K)
+                delta_b[j] = optimal_quote_foc(p_b, avg_db, self.K, self.N_agents)
 
         return delta_a, delta_b

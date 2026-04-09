@@ -31,20 +31,26 @@ import time
 from scipy.optimize import minimize_scalar
 
 
-def cx_execution_prob(delta_own, competitors_quotes, K):
+def cx_execution_prob(delta_own, competitors_quotes, K, N=2):
     """Cont-Xiong execution probability (eq 58).
 
     delta_own: scalar, this agent's quote at current inventory
     competitors_quotes: array of all competitor quotes across all inventory levels
     K: number of competitor inventory levels
+    N: total number of dealers (for the 1/N market share factor)
+
+    From eq (6): f_a^i = (1/N) * [1/(1+exp(delta))] * exp(S/K) / (1 + exp(delta + S/K))
+    The 1/N factor means each dealer's market share shrinks with more competitors.
     """
-    S = np.sum(competitors_quotes) / K if K > 0 else 0.0
-    base = 1.0 / (1.0 + np.exp(delta_own))
+    S_over_K = np.mean(competitors_quotes) if K > 0 else 0.0
+    base = 1.0 / (1.0 + np.exp(np.clip(delta_own, -20, 20)))
     if K > 0:
-        competition = np.exp(S) / (1.0 + np.exp(delta_own + S))
+        competition = np.exp(np.clip(S_over_K, -20, 20)) / (
+            1.0 + np.exp(np.clip(delta_own + S_over_K, -20, 20)))
+        return (1.0 / N) * base * competition
     else:
-        competition = base  # monopolist
-    return base * competition
+        # Monopolist: f = 1/(1+exp(delta))^2  (from Remark 2.5 with N=1)
+        return base * base
 
 
 def policy_evaluation(delta_a, delta_b, N, Q, Delta, lambda_a, lambda_b, r, psi_func):
@@ -79,8 +85,8 @@ def policy_evaluation(delta_a, delta_b, N, Q, Delta, lambda_a, lambda_b, r, psi_
             comp_ask = np.array([])
             comp_bid = np.array([])
 
-        fa = cx_execution_prob(delta_a[j], comp_ask, K_i) if q > -Q else 0.0
-        fb = cx_execution_prob(delta_b[j], comp_bid, K_i) if q < Q else 0.0
+        fa = cx_execution_prob(delta_a[j], comp_ask, K_i, N) if q > -Q else 0.0
+        fb = cx_execution_prob(delta_b[j], comp_bid, K_i, N) if q < Q else 0.0
 
         # Diagonal
         M[j, j] = r
@@ -137,7 +143,7 @@ def best_response(V, q_grid, competitors_delta_a, competitors_delta_b,
             comp_ask = np.tile(competitors_delta_a, N - 1) if N > 1 else np.array([])
 
             def neg_profit_a(delta):
-                fa = cx_execution_prob(delta, comp_ask, K_i)
+                fa = cx_execution_prob(delta, comp_ask, K_i, N)
                 return -(delta - p_a) * fa
 
             result = minimize_scalar(neg_profit_a, bounds=(-2, 10), method='bounded')
@@ -150,7 +156,7 @@ def best_response(V, q_grid, competitors_delta_a, competitors_delta_b,
             comp_bid = np.tile(competitors_delta_b, N - 1) if N > 1 else np.array([])
 
             def neg_profit_b(delta):
-                fb = cx_execution_prob(delta, comp_bid, K_i)
+                fb = cx_execution_prob(delta, comp_bid, K_i, N)
                 return -(delta - p_b) * fb
 
             result = minimize_scalar(neg_profit_b, bounds=(-2, 10), method='bounded')
