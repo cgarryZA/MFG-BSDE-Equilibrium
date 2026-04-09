@@ -41,9 +41,23 @@ class EqnConfig:
     law_encoder_type: str = "moments"
     law_embed_dim: int = 16
     n_bins: int = 20
+    subnet_type: str = "two_stream"  # "two_stream" | "film" | "film_additive"
     # Adverse selection
     eta: float = 0.0  # adverse selection strength (0 = none)
     signal_decay: float = 0.9  # EMA decay for price signal
+    # Price impact
+    kappa: float = 0.0  # permanent impact coefficient (0 = none)
+    impact_type: str = "linear"  # "linear" | "sqrt" | "quadratic"
+    # Multi-asset
+    n_assets: int = 1  # number of assets (K), state dim = 2K
+    correlation: float = 0.0  # cross-asset price correlation
+    # Common noise
+    sigma_common: float = 0.0  # common noise volatility (0 = none)
+    # Jump-diffusion
+    Delta_q: float = 1.0  # inventory jump size (discrete execution)
+    # Cont-Xiong proper execution probabilities
+    cx_a: float = 1.5  # price sensitivity in Lambda(delta)
+    cx_b: float = 0.0  # baseline offset
 
 
 @dataclass
