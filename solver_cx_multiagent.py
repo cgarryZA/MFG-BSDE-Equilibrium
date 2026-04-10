@@ -42,19 +42,24 @@ class PolicyNet(nn.Module):
 
 
 class CriticNet(nn.Module):
-    """Critic: estimates V(q) for TD learning."""
+    """Critic: estimates Q(q, delta_a, delta_b) — state-action value.
+
+    Input: (q_normalised, delta_a, delta_b) = 3 dimensions
+    Output: Q value (scalar)
+    """
     def __init__(self, hidden=32, dtype=torch.float64):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(1, hidden, dtype=dtype),
+            nn.Linear(3, hidden, dtype=dtype),  # q + da + db
             nn.Tanh(),
             nn.Linear(hidden, hidden, dtype=dtype),
             nn.Tanh(),
             nn.Linear(hidden, 1, dtype=dtype),
         )
 
-    def forward(self, q_norm):
-        return self.net(q_norm)
+    def forward(self, q_norm, da, db):
+        x = torch.cat([q_norm, da, db], dim=1)
+        return self.net(x)
 
 
 def cx_exec_prob(delta, avg_comp_delta, K, N):
@@ -192,33 +197,41 @@ class MultiAgentTrainer:
 
         return da, db
 
-    def update_agent(self, agent_idx, q_before, reward, q_after):
-        """Update critic (TD) and actor (policy gradient) for one agent."""
+    def update_agent(self, agent_idx, q_before, reward, q_after, da_taken, db_taken):
+        """Update critic (TD) and actor (DDPG-style policy gradient)."""
         agent = self.agents[agent_idx]
         device = self.device
 
         q_norm = torch.tensor([[q_before / self.Q]], dtype=torch.float64, device=device)
         q_norm_after = torch.tensor([[q_after / self.Q]], dtype=torch.float64, device=device)
+        da_t = torch.tensor([[da_taken]], dtype=torch.float64, device=device)
+        db_t = torch.tensor([[db_taken]], dtype=torch.float64, device=device)
 
-        # Critic update (TD learning)
+        # Critic update: TD learning on Q(q, da, db)
         agent["critic"].train()
-        V = agent["critic"](q_norm)
+        Q_current = agent["critic"](q_norm, da_t, db_t)
+
         with torch.no_grad():
-            V_next = agent["critic"](q_norm_after)
-        td_target = reward + self.market.gamma * V_next
-        critic_loss = (V - td_target) ** 2
+            # Next state: use actor's policy for next action
+            next_quotes = agent["actor"](q_norm_after)
+            next_da = next_quotes[:, 0:1]
+            next_db = next_quotes[:, 1:2]
+            Q_next = agent["critic"](q_norm_after, next_da, next_db)
+        td_target = reward + self.market.gamma * Q_next
+        critic_loss = (Q_current - td_target) ** 2
 
         agent["critic_opt"].zero_grad()
         critic_loss.backward()
         agent["critic_opt"].step()
 
-        # Actor update (policy gradient)
-        # The actor should output quotes that maximise the critic's V
+        # Actor update: maximise Q(q, actor(q))
+        # THIS is the key fix: gradients flow through actor -> critic
         agent["actor"].train()
-        quotes = agent["actor"](q_norm)  # [1, 2]
-        # Use critic value at current state as the objective
-        V_for_actor = agent["critic"](q_norm)
-        actor_loss = -V_for_actor  # maximise V
+        quotes = agent["actor"](q_norm)  # [1, 2] = (da, db)
+        actor_da = quotes[:, 0:1]
+        actor_db = quotes[:, 1:2]
+        Q_for_actor = agent["critic"](q_norm, actor_da, actor_db)
+        actor_loss = -Q_for_actor  # maximise Q
 
         agent["actor_opt"].zero_grad()
         actor_loss.backward()
@@ -252,7 +265,8 @@ class MultiAgentTrainer:
                 # Each agent updates from own reward
                 for i in range(self.N):
                     self.update_agent(i, q_before[i], rewards[i],
-                                     self.market.inventories[i])
+                                     self.market.inventories[i],
+                                     all_da[i], all_db[i])
 
             if episode % 50 == 0 or episode == self.n_episodes - 1:
                 # Evaluate: get quotes at q=0 (no exploration)
