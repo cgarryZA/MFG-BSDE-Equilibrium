@@ -130,25 +130,18 @@ def pareto_optimum(N=2, Q=5, Delta=1, lambda_a=2.0, lambda_b=2.0, r=0.01,
                 p_a2 = (W_here - W_a2d) / Delta
                 p_b2 = (W_here - W_a2u) / Delta
 
-                # FOC with monopolist execution probability / N
-                # argmax (1/N) * Lambda(delta) * (delta - p)
-                # Same FOC as monopolist since 1/N is constant
-                if q1 > -Q:
-                    def neg_pa1(d):
-                        return -monopolist_exec_prob(d) * (d - p_a1)
-                    new_da1[i1, i2] = minimize_scalar(neg_pa1, bounds=(-2, 10), method='bounded').x
-                if q1 < Q:
-                    def neg_pb1(d):
-                        return -monopolist_exec_prob(d) * (d - p_b1)
-                    new_db1[i1, i2] = minimize_scalar(neg_pb1, bounds=(-2, 10), method='bounded').x
-                if q2 > -Q:
-                    def neg_pa2(d):
-                        return -monopolist_exec_prob(d) * (d - p_a2)
-                    new_da2[i1, i2] = minimize_scalar(neg_pa2, bounds=(-2, 10), method='bounded').x
-                if q2 < Q:
-                    def neg_pb2(d):
-                        return -monopolist_exec_prob(d) * (d - p_b2)
-                    new_db2[i1, i2] = minimize_scalar(neg_pb2, bounds=(-2, 10), method='bounded').x
+                # FOC with monopolist execution probability
+                # At boundary: can't execute in one direction, but still compute
+                # the quote from FOC (it won't affect execution, just the profile)
+                def solve_foc(p):
+                    def neg_profit(d):
+                        return -monopolist_exec_prob(d) * (d - p)
+                    return minimize_scalar(neg_profit, bounds=(-2, 10), method='bounded').x
+
+                new_da1[i1, i2] = solve_foc(p_a1)
+                new_db1[i1, i2] = solve_foc(p_b1)
+                new_da2[i1, i2] = solve_foc(p_a2)
+                new_db2[i1, i2] = solve_foc(p_b2)
 
         diff = max(np.max(np.abs(new_da1 - da1)), np.max(np.abs(new_db1 - db1)),
                    np.max(np.abs(new_da2 - da2)), np.max(np.abs(new_db2 - db2)))
