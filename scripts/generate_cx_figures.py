@@ -49,28 +49,46 @@ def fig_nash_vs_pareto():
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5))
 
-    # Left: Ask quotes
-    ax1.plot(q, nash["delta_a"], "b-o", label="Nash (competitive)", linewidth=2, markersize=5)
-    ax1.plot(q, pareto["delta_a"], "r-s", label="Pareto (collusion)", linewidth=2, markersize=5)
-    if mono:
-        ax1.plot(q, mono["delta_a"], "k--", label="Monopolist", linewidth=1.5, alpha=0.5)
+    # Left: Both ask AND bid quotes (interior only)
+    q_inner = q[1:-1]
+    pda_clip = np.clip(pareto["delta_a"], -1, 3)
+    pdb_clip = np.clip(pareto["delta_b"], -1, 3)
+
+    ax1.plot(q_inner, [nash["delta_a"][i] for i in range(1, len(q)-1)],
+             "b-o", label="Nash ask", linewidth=2, markersize=5)
+    ax1.plot(q_inner, [nash["delta_b"][i] for i in range(1, len(q)-1)],
+             "b--o", label="Nash bid", linewidth=2, markersize=5, alpha=0.6)
+    ax1.plot(q_inner, [float(pda_clip[i]) for i in range(1, len(q)-1)],
+             "r-s", label="Pareto ask", linewidth=2, markersize=5)
+    ax1.plot(q_inner, [float(pdb_clip[i]) for i in range(1, len(q)-1)],
+             "r--s", label="Pareto bid", linewidth=2, markersize=5, alpha=0.6)
     ax1.set_xlabel("Inventory $q$", fontsize=12)
-    ax1.set_ylabel("Ask quote $\\delta^a(q)$", fontsize=12)
-    ax1.set_title("Ask Quotes", fontsize=13)
-    ax1.legend(fontsize=10)
+    ax1.set_ylabel("Quote $\\delta(q)$", fontsize=12)
+    ax1.set_title("Ask and Bid Quotes", fontsize=13)
+    ax1.legend(fontsize=9, ncol=2)
     ax1.grid(True, alpha=0.3)
 
-    # Right: Spreads
+    # Right: Spreads (exclude boundary q=+-Q where quotes are extreme)
     nash_spread = [a + b for a, b in zip(nash["delta_a"], nash["delta_b"])]
-    pareto_spread = pareto["spread"]
-    ax2.plot(q, nash_spread, "b-o", label="Nash spread", linewidth=2, markersize=5)
-    ax2.plot(q, pareto_spread, "r-s", label="Pareto spread", linewidth=2, markersize=5)
+    pareto_da = np.clip(pareto["delta_a"], -1, 3)
+    pareto_db = np.clip(pareto["delta_b"], -1, 3)
+    pareto_spread = [float(a + b) for a, b in zip(pareto_da, pareto_db)]
+
+    # Plot interior only (exclude boundary q=+-Q)
+    q_inner = q[1:-1]
+    nash_inner = nash_spread[1:-1]
+    pareto_inner = pareto_spread[1:-1]
+
+    ax2.plot(q_inner, nash_inner, "b-o", label=f"Nash ({nash_spread[len(q)//2]:.4f})",
+             linewidth=2, markersize=5)
+    ax2.plot(q_inner, pareto_inner, "r-s", label=f"Pareto ({pareto_spread[len(q)//2]:.4f})",
+             linewidth=2, markersize=5)
     if mono:
         mono_spread = [a + b for a, b in zip(mono["delta_a"], mono["delta_b"])]
-        ax2.plot(q, mono_spread, "k--", label="Monopolist", linewidth=1.5, alpha=0.5)
+        ax2.plot(q_inner, mono_spread[1:-1], "k--",
+                 label=f"Monopolist ({mono_spread[len(q)//2]:.4f})", linewidth=1.5, alpha=0.5)
 
-    # Shade collusion zone
-    ax2.fill_between(q, nash_spread, pareto_spread, alpha=0.15, color="red",
+    ax2.fill_between(q_inner, nash_inner, pareto_inner, alpha=0.15, color="red",
                      label="Collusion zone")
     ax2.set_xlabel("Inventory $q$", fontsize=12)
     ax2.set_ylabel("Total spread $\\delta^a + \\delta^b$", fontsize=12)
