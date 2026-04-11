@@ -1,0 +1,146 @@
+% BSDE Connection: CX Dealer Market as a Jump-BSDE
+% This section establishes that the Cont-Xiong dealer market model
+% is equivalent to a backward stochastic differential equation with
+% Poisson jumps (BSDEJ), connecting the numerical implementation to
+% the BSDE theory of Pardoux-Peng (1990) and El Karoui et al. (1997).
+
+\section{The Dealer Market as a BSDEJ}
+\label{sec:bsde-connection}
+
+We show that the Cont--Xiong dealer market model, formulated as a
+system of coupled Hamilton--Jacobi--Bellman equations in their
+Proposition~3.4, is equivalent to the solution of a backward stochastic
+differential equation with Poisson jumps (BSDEJ). This connection places
+the numerical methods developed in Chapters~4--5 within the theoretical
+framework of BSDE theory and justifies the ``deep BSDE'' methodology.
+
+\subsection{Forward-Backward System}
+
+Consider a single representative market maker (in the mean-field limit)
+with inventory process $q_t$ evolving as a compound Poisson process:
+\begin{equation}\label{eq:forward-sde}
+  dq_t = \Delta \bigl(dN^b_t - dN^a_t\bigr),
+\end{equation}
+where $N^a_t$ and $N^b_t$ are independent Poisson counting processes
+with stochastic intensities
+\begin{equation}
+  \nu^a_t = \lambda^a f^a\bigl(\delta^a_t, \mu_t\bigr), \qquad
+  \nu^b_t = \lambda^b f^b\bigl(\delta^b_t, \mu_t\bigr),
+\end{equation}
+and $f^a, f^b$ are the Cont--Xiong execution probabilities (their
+equation~6), which depend on the agent's own quote $\delta$ and the
+population distribution of quotes $\mu_t$.
+
+The market maker's objective over a finite horizon $[0, T]$ is:
+\begin{equation}\label{eq:objective}
+  V(t, q) = \sup_{\delta^a, \delta^b} \mathbb{E}\Bigl[
+    \int_t^T e^{-r(s-t)} \bigl(\text{profits}_s - \psi(q_s)\bigr)\,ds
+    + e^{-r(T-t)} g(q_T)
+  \Bigr],
+\end{equation}
+where $\psi(q) = \phi q^2$ is the running inventory penalty and
+$g(q_T) = -\psi(q_T)$ is the terminal condition.
+
+\subsection{BSDEJ Formulation}
+
+By the nonlinear Feynman--Kac theorem for jump-diffusion processes
+\cite{barles1997}, the value function $V(t, q)$ is characterised as
+the $Y$-process of the BSDEJ:
+\begin{equation}\label{eq:bsdej}
+  -dY_t = f(t, q_t, Y_t, U^a_t, U^b_t)\,dt
+          - U^a_t \bigl(dN^a_t - \nu^a_t\,dt\bigr)
+          - U^b_t \bigl(dN^b_t - \nu^b_t\,dt\bigr),
+\end{equation}
+with terminal condition $Y_T = g(q_T) = -\psi(q_T)$, where:
+\begin{itemize}
+  \item $Y_t = V(t, q_t)$ is the value process,
+  \item $U^a_t = V(t, q_t - \Delta) - V(t, q_t)$ is the jump coefficient
+        for ask executions (value change when inventory decreases),
+  \item $U^b_t = V(t, q_t + \Delta) - V(t, q_t)$ is the jump coefficient
+        for bid executions (value change when inventory increases).
+\end{itemize}
+
+The generator $f$ encodes the optimal market-making strategy:
+\begin{equation}\label{eq:generator}
+  f(t, q, Y, U^a, U^b) = -rY - \psi(q)
+    + \lambda^a \sup_{\delta^a} \bigl[f^a(\delta^a, \mu)\,(\delta^a \Delta + U^a)\bigr]
+    + \lambda^b \sup_{\delta^b} \bigl[f^b(\delta^b, \mu)\,(\delta^b \Delta + U^b)\bigr].
+\end{equation}
+
+\begin{remark}[Connection to the HJB system]
+The Cont--Xiong Bellman equation (their equation~28) is the
+\emph{stationary} ($T \to \infty$) limit of~\eqref{eq:bsdej}. In the
+stationary case, $\partial_t V = 0$ and $Y_t = V(q_t)$ depends only on
+inventory, not time. The BSDEJ reduces to the algebraic system
+\begin{equation}
+  rV(q) + \psi(q) = \lambda^a \sup_{\delta^a}\bigl[f^a\,(\delta^a \Delta + U^a(q))\bigr]
+                   + \lambda^b \sup_{\delta^b}\bigl[f^b\,(\delta^b \Delta + U^b(q))\bigr],
+\end{equation}
+which is exactly the system solved by Algorithm~1 and our neural
+Bellman solver. The neural solver learns $V(q)$; the jump coefficients
+$U^a(q) = V(q-1) - V(q)$ and $U^b(q) = V(q+1) - V(q)$ are computed
+from value differences; and optimal quotes are derived from the
+first-order condition of~\eqref{eq:generator}.
+\end{remark}
+
+\begin{remark}[Absence of diffusion term]
+Unlike the standard BSDE framework where $Z_t\,dW_t$ represents the
+diffusion coefficient, the CX model has $Z_t = 0$ because the value
+function does not depend on the mid-price $S_t$ (the price cancels
+in the Cont--Xiong formulation; see their Lemma~2.6). All stochasticity
+enters through the Poisson jump terms $U^a\,dN^a + U^b\,dN^b$. This
+makes the problem a \emph{pure-jump BSDE}, which is well-posed under
+weaker conditions than the general BSDE theory requires
+\cite{tang1994}.
+\end{remark}
+
+\subsection{Deep BSDE Method for Jump Processes}
+
+The deep BSDE method of \citet{han2018} parameterises $Z_t$ as neural
+networks at each time step and propagates the BSDE forward in time,
+minimising the terminal mismatch $|Y_T - g(q_T)|^2$. For our
+pure-jump problem, we parameterise $U^a_t$ and $U^b_t$ instead of
+$Z_t$:
+
+\begin{enumerate}
+  \item \textbf{Initialise:} Learn $Y_0 = V(0, q_0)$ as a scalar parameter.
+  \item \textbf{Forward propagation:} At each time step $t_m$, the subnet
+        $\phi_m(t, q) \to (U^a_m, U^b_m)$ predicts the jump coefficients.
+        Optimal quotes $\delta^{a*}_m, \delta^{b*}_m$ are derived from the
+        FOC of~\eqref{eq:generator}.
+  \item \textbf{BSDE step:} Update $Y_{m+1} = Y_m - f_m \Delta t +
+        U^a_m (N^a_{m+1} - N^a_m - \nu^a_m \Delta t) +
+        U^b_m (N^b_{m+1} - N^b_m - \nu^b_m \Delta t)$.
+  \item \textbf{Loss:} $\mathcal{L} = \mathbb{E}|Y_M - g(q_T)|^2$.
+\end{enumerate}
+
+This is a direct extension of \citet{han2018} to jump processes,
+following the theoretical framework of \citet{han2022} for
+McKean--Vlasov FBSDEs. The mean-field coupling enters through the
+execution probabilities $f^a, f^b$, which depend on the population
+distribution $\mu_t$.
+
+\subsection{Relationship to the Stationary Solver}
+
+Our primary numerical results (Chapters~4--5) use the stationary
+($T = \infty$) formulation, which we call the ``neural Bellman solver.''
+This corresponds to solving the BSDEJ in the ergodic limit:
+\begin{equation}
+  \lim_{T \to \infty} \frac{1}{T} V(0, q_0; T) = \text{ergodic constant},
+\end{equation}
+and the optimal quotes converge to the stationary Nash equilibrium.
+
+The finite-horizon BSDEJ solver (this section) serves as validation:
+for large $T$, the finite-horizon and stationary solutions should agree
+at $t = 0$. We verify this computationally by comparing the deep BSDEJ
+output $Y_0$ against the stationary Algorithm~1 value $V(0)$.
+
+\begin{remark}[Why BSDE and not just HJB?]
+The BSDE formulation is preferred over the direct HJB approach for
+three reasons: (i)~it extends naturally to high-dimensional problems
+via the deep BSDE method, avoiding the curse of dimensionality that
+afflicts grid-based HJB solvers; (ii)~the Wasserstein convergence
+guarantees of \citet{han2022} apply to the BSDE formulation but not
+directly to the HJB; (iii)~the probabilistic interpretation enables
+simulation-based training without discretising the state space.
+\end{remark}
