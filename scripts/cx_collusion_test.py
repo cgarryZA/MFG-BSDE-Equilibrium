@@ -16,7 +16,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from solver_cx_multiagent import MultiAgentTrainer
+from solver_cx_multiagent import MADDPGTrainer
 from scripts.cont_xiong_exact import fictitious_play as exact_fp
 
 
@@ -52,9 +52,11 @@ def main():
         torch.manual_seed(round_idx)
         np.random.seed(round_idx)
 
-        trainer = MultiAgentTrainer(
-            N=2, Q=5, device=device, lr_actor=5e-4, lr_critic=1e-3,
-            n_episodes=300, steps_per_episode=500,
+        trainer = MADDPGTrainer(
+            N=2, Q=5, device=device,
+            lr_actor=1e-3, lr_critic=1e-3, tau=0.01,
+            n_episodes=500, steps_per_episode=500,
+            batch_size=32, buffer_size=10000,
         )
         result = trainer.train()
         avg_spread = result["avg_final_spread"]

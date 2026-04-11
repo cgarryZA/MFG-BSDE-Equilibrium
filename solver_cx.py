@@ -20,17 +20,18 @@ from equations.contxiong_exact import (
 
 
 class ValueNet(nn.Module):
-    """Small network to approximate V(q) on discrete inventory grid."""
+    """Network to approximate V(q) on discrete inventory grid.
 
-    def __init__(self, hidden=64, dtype=torch.float64):
+    Scales with problem size: more hidden units for larger Q.
+    """
+
+    def __init__(self, hidden=64, n_layers=2, dtype=torch.float64):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(1, hidden, dtype=dtype),
-            nn.Tanh(),
-            nn.Linear(hidden, hidden, dtype=dtype),
-            nn.Tanh(),
-            nn.Linear(hidden, 1, dtype=dtype),
-        )
+        layers = [nn.Linear(1, hidden, dtype=dtype), nn.Tanh()]
+        for _ in range(n_layers - 1):
+            layers.extend([nn.Linear(hidden, hidden, dtype=dtype), nn.Tanh()])
+        layers.append(nn.Linear(hidden, 1, dtype=dtype))
+        self.net = nn.Sequential(*layers)
 
     def forward(self, q_normalised):
         return self.net(q_normalised)
@@ -50,7 +51,11 @@ class CXSolver:
         self.n_iter = n_iter
         self.verbose = verbose
 
-        self.value_net = ValueNet(hidden=64).to(self.device)
+        # Scale network with problem size
+        nq = eqn.nq
+        hidden = max(64, nq * 4)  # bigger network for bigger Q
+        n_layers = 2 if nq <= 21 else 3
+        self.value_net = ValueNet(hidden=hidden, n_layers=n_layers).to(self.device)
         self.optimizer = torch.optim.Adam(self.value_net.parameters(), lr=lr)
 
         self.q_norm = torch.tensor(
