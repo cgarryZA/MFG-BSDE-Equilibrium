@@ -1,0 +1,18 @@
+{
+  "completed": [
+    "FP_ts",
+    "FP_film",
+    "multi_seed",
+    "FD_match",
+    "impact",
+    "equilibrium",
+    "FD_FP",
+    "FiLM_FP",
+    "common_noise",
+    "horizon"
+  ],
+  "crashed": [
+    "scale"
+  ],
+  "elapsed_minutes": 1175.825076095263
+}

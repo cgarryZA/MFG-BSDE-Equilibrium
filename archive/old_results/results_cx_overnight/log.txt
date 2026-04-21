@@ -1,0 +1,86 @@
+[21:23:48] Device: cuda
+[21:23:48] Started: 2026-04-09 21:23:48
+[21:23:48] 
+============================================================
+[21:23:48] 1. Scale test (N=1,2,5,10) with 1/N fix
+[21:23:48] ============================================================
+[21:23:48] 
+  N=1:
+[21:23:48]     Exact: spread(0)=1.5933, V(0)=28.0191
+[21:25:34]     Neural: spread(0)=1.5932, V(0)=28.0189, err=0.0001
+[21:25:34]   Saved results_cx_overnight\scale_test.json
+[21:25:34] 
+  N=2:
+[21:25:34]     Exact: spread(0)=1.5153, V(0)=16.1765
+[21:27:45]     Neural: spread(0)=1.5064, V(0)=16.3888, err=0.0090
+[21:27:45]   Saved results_cx_overnight\scale_test.json
+[21:27:45] 
+  N=5:
+[21:27:45]     Exact: spread(0)=1.5874, V(0)=6.0843
+[21:29:52]     Neural: spread(0)=1.5768, V(0)=6.1693, err=0.0106
+[21:29:52]   Saved results_cx_overnight\scale_test.json
+[21:29:52] 
+  N=10:
+[21:29:53]     Exact: spread(0)=1.6611, V(0)=2.8566
+[21:31:48]     Neural: spread(0)=1.6519, V(0)=2.9021, err=0.0092
+[21:31:48]   Saved results_cx_overnight\scale_test.json
+[21:31:48]   Done in 8 min
+[21:31:48] 
+============================================================
+[21:31:48] 2. Continuous inventory solver (N=2)
+[21:31:48] ============================================================
+[21:31:48]   Training continuous solver (N=2, 15000 iter)...
+[21:44:29] 
+  Comparison at grid points:
+[21:44:29]      q  Ex_spr  NN_spr     err
+[21:44:29]     -5  0.0419  0.0638  0.0219
+[21:44:29]     -4  1.6122  1.5927  0.0195
+[21:44:29]     -3  1.5474  1.5205  0.0269
+[21:44:29]     -2  1.5276  1.5145  0.0132
+[21:44:29]     -1  1.5183  1.5078  0.0105
+[21:44:29]      0  1.5153  1.5053  0.0101
+[21:44:29]      1  1.5183  1.5077  0.0106
+[21:44:29]      2  1.5276  1.5121  0.0155
+[21:44:29]      3  1.5474  1.5196  0.0278
+[21:44:29]      4  1.6122  1.5894  0.0228
+[21:44:29]      5  0.0419  0.0696  0.0277
+[21:44:29]   Max error: 0.0278
+[21:44:29]   Saved results_cx_overnight\continuous_result.json
+[21:44:29]   Done in 13 min
+[21:44:29] 
+============================================================
+[21:44:29] 3. Full N=2 validation (exact vs single vs FP)
+[21:44:29] ============================================================
+[22:00:52]   Exact:       spread(0)=1.5153
+[22:00:52]   Single-pass: spread(0)=1.5064 (err=0.0090)
+[22:00:52]   Neural FP:   spread(0)=1.5050 (err=0.0104)
+[22:00:52]   Saved results_cx_overnight\validation.json
+[22:00:52]   Done in 16 min
+[22:00:52] 
+============================================================
+[22:00:52] 4. Tacit collusion detection
+[22:00:52] ============================================================
+[22:00:52]   Full-info solver (knows population)...
+[22:02:45]     spread(0)=1.5067
+[22:02:45]   No-info solver (assumes monopolist)...
+[22:04:10]     spread(0)=1.5932
+[22:04:10]   Partial-info solver (stale population estimate)...
+[22:06:02]     spread(0)=1.4784
+[22:06:02] 
+  Collusion comparison:
+[22:06:02]     Nash equilibrium:  1.5153
+[22:06:02]     Full-info solver:  1.5067
+[22:06:02]     Partial-info:      1.4784
+[22:06:02]     No-info (monopolist): 1.5932
+[22:06:02]     Collusion gap (partial - Nash): -0.0369
+[22:06:02]   Saved results_cx_overnight\collusion.json
+[22:06:02]   Done in 5 min
+[22:06:02] 
+============================================================
+[22:06:02] ALL DONE in 42 min
+[22:06:02] ============================================================
+[22:06:02]   scale: OK
+[22:06:02]   continuous: OK
+[22:06:02]   validation: OK
+[22:06:02]   collusion: OK
+[22:06:02]   Saved results_cx_overnight\summary.json

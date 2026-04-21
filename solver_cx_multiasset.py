@@ -166,6 +166,55 @@ class CXMultiAssetSolver:
         residual = self.r * V_q + psi_q - total_profit
         return torch.mean(residual ** 2)
 
+    def _compute_grid_quotes(self, avg_da, avg_db):
+        """Compute optimal quotes on the full grid for each asset.
+        Used to update population averages (with boundary fix).
+        Returns (das_per_asset, dbs_per_asset) with shape [K, nq].
+        """
+        q_vals = np.arange(-self.Q, self.Q + self.Delta, self.Delta)
+        nq = len(q_vals)
+
+        # Build a grid of inventory vectors — for K>1, sample diagonal q_k=q_k only
+        # We evaluate V at points where only asset k varies, other k'!=k held at 0
+        das_list = []
+        dbs_list = []
+
+        for k in range(self.K):
+            # Evaluate V at (0,...,q_k,...,0) for each q_k on grid
+            q_tensor = torch.zeros(nq, self.K, dtype=torch.float64, device=self.device)
+            q_tensor[:, k] = torch.tensor(q_vals, dtype=torch.float64, device=self.device)
+
+            # q shifted down in coord k
+            q_minus = q_tensor.clone()
+            q_minus[:, k] = torch.clamp(q_minus[:, k] - self.Delta, -self.Q, self.Q)
+            q_plus = q_tensor.clone()
+            q_plus[:, k] = torch.clamp(q_plus[:, k] + self.Delta, -self.Q, self.Q)
+
+            with torch.no_grad():
+                V_q = self.V(q_tensor).cpu().numpy().flatten()
+                V_m = self.V(q_minus).cpu().numpy().flatten()
+                V_p = self.V(q_plus).cpu().numpy().flatten()
+
+            das = np.zeros(nq)
+            dbs = np.zeros(nq)
+            for i, q in enumerate(q_vals):
+                if q > -self.Q:
+                    p_a = (V_q[i] - V_m[i]) / self.Delta
+                    def neg_pa(d):
+                        return -(d - p_a) * cx_exec_prob_np(d, avg_da[k],
+                                                             self.K_competitors, self.N)
+                    das[i] = minimize_scalar(neg_pa, bounds=(-2, 10), method='bounded').x
+                if q < self.Q:
+                    p_b = (V_q[i] - V_p[i]) / self.Delta
+                    def neg_pb(d):
+                        return -(d - p_b) * cx_exec_prob_np(d, avg_db[k],
+                                                             self.K_competitors, self.N)
+                    dbs[i] = minimize_scalar(neg_pb, bounds=(-2, 10), method='bounded').x
+            das_list.append(das)
+            dbs_list.append(dbs)
+
+        return np.array(das_list), np.array(dbs_list)
+
     def train(self):
         start = time.time()
         history = []
@@ -181,17 +230,38 @@ class CXMultiAssetSolver:
             loss.backward()
             self.optimizer.step()
 
+            # Update avg_da, avg_db every 100 steps (with boundary fix: include zeros)
+            if step % 100 == 0 and step > 0:
+                das_grid, dbs_grid = self._compute_grid_quotes(avg_da, avg_db)
+                # Damped update — include boundary zeros in average (boundary fix)
+                for k in range(self.K):
+                    new_a = float(das_grid[k].mean())
+                    new_b = float(dbs_grid[k].mean())
+                    avg_da[k] = 0.5 * new_a + 0.5 * avg_da[k]
+                    avg_db[k] = 0.5 * new_b + 0.5 * avg_db[k]
+
             if step % 1000 == 0 or step == self.n_iter - 1:
                 with torch.no_grad():
                     q0 = torch.zeros(1, self.K, dtype=torch.float64, device=self.device)
                     v0 = self.V(q0).item()
-                print(f"  step {step}: loss={loss.item():.4e}, V(0)={v0:.4f}")
-                history.append({"step": step, "loss": loss.item(), "V_0": v0})
+                print(f"  step {step}: loss={loss.item():.4e}, V(0)={v0:.4f}, "
+                      f"avg_da={avg_da[0]:.4f}", flush=True)
+                history.append({"step": step, "loss": loss.item(), "V_0": v0,
+                                "avg_da": avg_da[0]})
 
         elapsed = time.time() - start
-        # Evaluate at origin
+
+        # Compute final quotes and spread
+        das_grid, dbs_grid = self._compute_grid_quotes(avg_da, avg_db)
+        mid = self.nq // 2
+        spreads_per_asset = [float(das_grid[k][mid] + dbs_grid[k][mid]) for k in range(self.K)]
+
         with torch.no_grad():
             q0 = torch.zeros(1, self.K, dtype=torch.float64, device=self.device)
             v0 = self.V(q0).item()
 
-        return {"V_0": v0, "history": history, "elapsed": elapsed, "K": self.K}
+        return {"V_0": v0, "history": history, "elapsed": elapsed, "K": self.K,
+                "avg_da": avg_da, "avg_db": avg_db,
+                "spreads_per_asset": spreads_per_asset,
+                "das_grid": das_grid.tolist(),
+                "dbs_grid": dbs_grid.tolist()}

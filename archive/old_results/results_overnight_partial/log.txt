@@ -1,0 +1,280 @@
+[21:20:28] Device: cuda
+[21:20:28] Started: 2026-04-06 21:20:28
+[21:20:28] 
+============================================================
+[21:20:28] 1. FP two_stream (20 outer × 2000 inner, damping=0.5)
+[21:20:28] ============================================================
+[22:03:35] Saved: results_overnight\fp_two_stream.json
+[22:03:35]   Done in 174.5 min
+[22:03:35]   Converged: False
+[22:03:35]   W2 trajectory: 0.0657 -> 0.0559 -> 0.0650 -> 0.0565 -> 0.0587 -> 0.0574 -> 0.0623 -> 0.0561 -> 0.0600 -> 0.0519
+[22:03:35]     ... -> 0.0585 -> 0.0622 -> 0.0415 -> 0.0434 -> 0.0509 -> 0.0522 -> 0.0480 -> 0.0455 -> 0.0473 -> 0.0493
+[22:03:35] 
+============================================================
+[22:03:35] 2. FP convergence — film (20 outer × 2000 inner)
+[22:03:35] ============================================================
+[00:50:09] Saved: results_overnight\fp_two_stream.json
+[00:50:09]   Done in 227.4 min
+[00:50:09]   Converged: False
+[00:50:09]   W2: 0.0516 -> 0.0562 -> 0.0506 -> 0.0470 -> 0.0541 -> 0.0627 -> 0.0541 -> 0.0495 -> 0.0483 -> 0.0502 -> 0.0496 -> 0.0473 -> 0.0584 -> 0.0534 -> 0.0433 -> 0.0439 -> 0.0501 -> 0.0474 -> 0.0442 -> 0.0575
+[00:50:09] 
+============================================================
+[00:50:09] 2. FP film (20 outer x 2000 inner)
+[00:50:09] ============================================================
+[01:00:50]   Saved results_overnight\fp_two_stream.json
+[01:00:50]   229 min | converged=False | W2: 0.0454 0.0558 0.0674 0.0495 0.0540 0.0483 0.0418 0.0688 0.0609 0.0553 0.0456 0.0476 0.0394 0.0496 0.0448 0.0461 0.0410 0.0438 0.0617 0.0490
+[01:00:50] 
+============================================================
+[01:00:50] 2. FP film (20 outer × 2000 inner, damping=0.5)
+[01:00:50] ============================================================
+[01:09:42]   Saved results_overnight\fp_two_stream.json
+[01:09:42]   229 min | converged=False | W2: 0.0597 0.0618 0.0516 0.0467 0.0671 0.0545 0.0565 0.0581 0.0529 0.0540 0.0466 0.0494 0.0566 0.0539 0.0479 0.0554 0.0543 0.0524 0.0460 0.0544
+[01:09:42] 
+============================================================
+[01:09:42] 2. FP film (20 outer × 2000 inner, damping=0.5)
+[01:09:42] ============================================================
+[04:26:10] Saved: results_overnight\fp_film.json
+[04:26:10]   Done in 216.0 min
+[04:26:10]   Converged: False
+[04:26:10]   W2: 0.0392 -> 0.0524 -> 0.0543 -> 0.0465 -> 0.0428 -> 0.0487 -> 0.0479 -> 0.0649 -> 0.0486 -> 0.0517 -> 0.0470 -> 0.0556 -> 0.0431 -> 0.0562 -> 0.0460 -> 0.0429 -> 0.0578 -> 0.0413 -> 0.0474 -> 0.0460
+[04:26:10] 
+============================================================
+[04:26:10] 3. Damping sweep (alpha = 0.1, 0.3, 1.0)
+[04:26:10] ============================================================
+[04:26:10] 
+  --- damping=0.1 ---
+[04:37:04]   Saved results_overnight\fp_film.json
+[04:37:04]   216 min | converged=False | W2: 0.0580 0.0545 0.0543 0.0493 0.0527 0.0526 0.0495 0.0621 0.0506 0.0526 0.0494 0.0536 0.0489 0.0505 0.0490 0.0483 0.0429 0.0642 0.0494 0.0448
+[04:37:04] 
+============================================================
+[04:37:04] 3. Damping sweep (alpha = 0.1, 0.3, 1.0)
+[04:37:04] ============================================================
+[04:45:55]   Saved results_overnight\fp_film.json
+[04:45:55]   216 min | converged=False | W2: 0.0503 0.0588 0.0538 0.0695 0.0633 0.0532 0.0602 0.0524 0.0612 0.0471 0.0514 0.0432 0.0492 0.0472 0.0461 0.0436 0.0463 0.0477 0.0414 0.0401
+[04:45:55] 
+============================================================
+[04:45:55] 3. Damping sweep (alpha = 0.1, 0.3, 1.0)
+[04:45:55] ============================================================
+[06:23:21]   W2: 0.0230 -> 0.0211 -> 0.0214 -> 0.0211 -> 0.0192 -> 0.0218 -> 0.0223 -> 0.0226 -> 0.0220 -> 0.0201 -> 0.0231 -> 0.0231 -> 0.0208 -> 0.0180 -> 0.0227
+[06:23:21]   (117.2 min)
+[06:23:21] 
+  --- damping=0.3 ---
+[06:34:19]   alpha=0.1: 117 min | W2 final=0.0190
+[06:43:10]   alpha=0.1: 117 min | W2 final=0.0188
+[08:20:43]   W2: 0.0387 -> 0.0346 -> 0.0477 -> 0.0440 -> 0.0443 -> 0.0363 -> 0.0452 -> 0.0463 -> 0.0389 -> 0.0338 -> 0.0328 -> 0.0393 -> 0.0363 -> 0.0406 -> 0.0371
+[08:20:43]   (117.4 min)
+[08:20:43] 
+  --- damping=1.0 ---
+[08:31:42]   alpha=0.3: 117 min | W2 final=0.0350
+[08:40:29]   alpha=0.3: 117 min | W2 final=0.0352
+[10:17:56]   W2: 0.1118 -> 0.1119 -> 0.0975 -> 0.0630 -> 0.0882 -> 0.1129 -> 0.0865 -> 0.1027 -> 0.0848 -> 0.0929 -> 0.0817 -> 0.0894 -> 0.0729 -> 0.0600 -> 0.0622
+[10:17:56]   (117.2 min)
+[10:17:56] Saved: results_overnight\damping_sweep.json
+[10:17:56] 
+  Best damping: 0.1 (W2=0.022681)
+[10:17:56] 
+============================================================
+[10:17:56] 4. Multi-seed FP (5 seeds, damping=0.1)
+[10:17:56] ============================================================
+[10:17:56]   --- seed=0 ---
+[10:28:56]   alpha=1.0: 117 min | W2 final=0.0832
+[10:28:56]   Saved results_overnight\damping_sweep.json
+[10:28:56]   Best: alpha=0.1
+[10:28:56] 
+============================================================
+[10:28:56] 4. Multi-seed FP (5 seeds, alpha=0.1)
+[10:28:56] ============================================================
+[10:37:48]   alpha=1.0: 117 min | W2 final=0.0961
+[10:37:48]   Saved results_overnight\damping_sweep.json
+[10:37:48]   Best: alpha=0.1
+[10:37:48] 
+============================================================
+[10:37:48] 4. Multi-seed FP (5 seeds, alpha=0.1)
+[10:37:48] ============================================================
+[12:06:07] FATAL ERROR:
+Traceback (most recent call last):
+  File "D:\DeepBSDE\scripts\run_overnight.py", line 406, in <module>
+    main()
+    ~~~~^^
+  File "D:\DeepBSDE\scripts\run_overnight.py", line 286, in main
+    r = run_fp("two_stream", 15, 1500, float(best_a), seed=s, device=device)
+  File "D:\DeepBSDE\scripts\run_overnight.py", line 82, in run_fp
+    return fp.train()
+           ~~~~~~~~^^
+  File "D:\DeepBSDE\solver.py", line 1894, in train
+    result = solver.train()
+  File "D:\DeepBSDE\solver.py", line 1694, in train
+    loss, mean_y = self.loss_fn(train_data)
+                   ~~~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\DeepBSDE\solver.py", line 1639, in loss_fn
+    y_terminal, mean_y, loss_inter = self.model(inputs)
+                                     ~~~~~~~~~~^^^^^^^^
+  File "C:\Users\Christian\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Christian\AppData\Roaming\Python\Python313\site-packages\torch\nn\modules\module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "D:\DeepBSDE\solver.py", line 1552, in forward
+    law_embeddings.append(law_embed.detach().cpu().numpy())
+                          ~~~~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: CUDA error: unspecified launch failure
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+
+[12:13:28]   W2=0.016506, Y0=0.0166 (115.5 min)
+[12:13:28]   --- seed=1 ---
+[12:22:06]   seed=0: W2=0.0197 Y0=0.0236 (113m)
+[13:46:25]   W2=0.010308, Y0=-0.0571 (92.9 min)
+[13:46:25]   --- seed=2 ---
+[13:55:09]   seed=1: W2=0.0102 Y0=-0.0580 (93m)
+[15:19:37]   W2=0.020140, Y0=0.0709 (93.2 min)
+[15:19:37]   --- seed=3 ---
+[15:28:18]   seed=2: W2=0.0177 Y0=0.0695 (93m)
+[16:52:17]   W2=0.014519, Y0=-0.0129 (92.7 min)
+[16:52:17]   --- seed=4 ---
+[17:01:04]   seed=3: W2=0.0148 Y0=-0.0219 (93m)
+[18:28:26]   W2=0.020557, Y0=0.0676 (96.2 min)
+[18:28:26] Saved: results_overnight\multi_seed_fp.json
+[18:28:26] 
+============================================================
+[18:28:26] 5. FD matching
+[18:28:26] ============================================================
+[18:38:11]   seed=4: W2=0.0199 Y0=0.0742 (97m)
+[18:38:11]   Saved results_overnight\multi_seed.json
+[18:38:11] 
+============================================================
+[18:38:11] 5. FD quantitative matching
+[18:38:11] ============================================================
+[18:42:13] 
+       Pop      h    NN_da    FD_da   NN_spr   FD_spr
+[18:42:13]   std=0.1  0.395   0.6749   0.8387   1.3333   1.6774
+[18:42:13]   std=1.0  0.248   0.6331   0.8434   1.3333   1.6868
+[18:42:13]   std=3.0  0.048   0.6750   0.8502   1.3333   1.7004
+[18:42:13] 
+  d(spread)/d(h): NN=0.0000, FD=-0.0665
+[18:42:13] Saved: results_overnight\fd_matching.json
+[18:42:13] 
+============================================================
+[18:42:13] ALL DONE in 1299.4 min
+[18:42:13] ============================================================
+[18:42:13]   FP two_stream: W2=0.057504
+[18:42:13]   FP film:       W2=0.046004
+[18:42:13]   Best damping:  0.1
+[18:42:13]   FD sensitivity: NN=0.0000, FD=-0.0665
+[18:42:13] Saved: results_overnight\all_overnight_results.json
+[18:42:13] Done.
+[18:52:14]      pop      h   NN_da   FD_da  NN_spr  FD_spr
+[18:52:14]      0.1  0.413  0.6847  0.8381  1.3333  1.6763
+[18:52:14]      1.0  0.254  0.6529  0.8432  1.3333  1.6864
+[18:52:14]      3.0  0.062  0.7150  0.8497  1.3333  1.6994
+[18:52:14]   d(spread)/d(h): NN=0.0000  FD=-0.0661  ratio=0.0x
+[18:52:14]   Saved results_overnight\fd_matching.json
+[18:52:14] 
+============================================================
+[18:52:14] 6. Non-linear impact phase transition
+[18:52:14] ============================================================
+[18:52:14] 
+  --- linear ---
+[19:01:07]     kappa= 0.00: [OK ] Y0=0.0780 (533s)
+[19:10:39]     kappa= 0.01: [OK ] Y0=0.0690 (572s)
+[19:19:54]     kappa= 0.05: [OK ] Y0=0.0483 (555s)
+[19:29:19]     kappa= 0.10: [OK ] Y0=0.0115 (565s)
+[19:32:27] 
+RESUMING — Device: cuda
+[19:32:27] Started: 2026-04-07 19:32:27
+[19:32:27] 
+============================================================
+[19:32:27] 4. Multi-seed FP (5 seeds, alpha=0.1, 15 outer × 1500 inner)
+[19:32:27] ============================================================
+[19:32:27]   --- seed=0 ---
+[19:40:57]     kappa= 0.20: [OK ] Y0=-0.0276 (698s)
+[19:52:20]     kappa= 0.50: [OK ] Y0=-0.0568 (683s)
+[20:03:25]     kappa= 1.00: [OK ] Y0=-0.0630 (665s)
+[20:14:31]     kappa= 2.00: [OK ] Y0=-0.0687 (666s)
+[20:14:31] 
+  --- sqrt ---
+[20:26:11]     kappa= 0.00: [OK ] Y0=0.0856 (700s)
+[20:37:51]     kappa= 0.01: [OK ] Y0=0.0771 (700s)
+[20:49:30]     kappa= 0.05: [OK ] Y0=0.0185 (700s)
+[21:01:08]     kappa= 0.10: [OK ] Y0=-0.0368 (698s)
+[21:12:47]     kappa= 0.20: [OK ] Y0=-0.0644 (699s)
+[21:22:48] FATAL ERROR:
+Traceback (most recent call last):
+  File "D:\DeepBSDE\scripts\run_overnight_resume.py", line 709, in <module>
+    main()
+    ~~~~^^
+  File "D:\DeepBSDE\scripts\run_overnight_resume.py", line 304, in main
+    r = run_fp("two_stream", 15, 1500, 0.1, seed=s, device=device)
+  File "D:\DeepBSDE\scripts\run_overnight_resume.py", line 78, in run_fp
+    return fp.train()
+           ~~~~~~~~^^
+  File "D:\DeepBSDE\solver.py", line 1951, in train
+    result = solver.train()
+  File "D:\DeepBSDE\solver.py", line 1695, in train
+    loss.backward()
+    ~~~~~~~~~~~~~^^
+  File "C:\Users\Christian\AppData\Roaming\Python\Python313\site-packages\torch\_tensor.py", line 626, in backward
+    torch.autograd.backward(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        self, gradient, retain_graph, create_graph, inputs=inputs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Christian\AppData\Roaming\Python\Python313\site-packages\torch\autograd\__init__.py", line 347, in backward
+    _engine_run_backward(
+    ~~~~~~~~~~~~~~~~~~~~^
+        tensors,
+        ^^^^^^^^
+    ...<5 lines>...
+        accumulate_grad=True,
+        ^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Christian\AppData\Roaming\Python\Python313\site-packages\torch\autograd\graph.py", line 823, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        t_outputs, *args, **kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # Calls into the C++ engine to run the backward pass
+    ^
+RuntimeError: CUDA error: unspecified launch failure
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+
+[21:24:03]     kappa= 0.50: [OK ] Y0=-0.0792 (676s)
+[21:33:00]     kappa= 1.00: [OK ] Y0=-0.0859 (537s)
+[21:41:10]     kappa= 2.00: [OK ] Y0=0.4018 (489s)
+[21:41:10] 
+  --- quadratic ---
+[21:49:02]     kappa= 0.00: [OK ] Y0=0.0822 (473s)
+[21:56:54]     kappa= 0.01: [OK ] Y0=0.0789 (472s)
+[22:04:47]     kappa= 0.05: [OK ] Y0=0.0683 (472s)
+[22:12:39]     kappa= 0.10: [OK ] Y0=0.0689 (472s)
+[22:20:32]     kappa= 0.20: [OK ] Y0=0.0513 (473s)
+[22:28:24]     kappa= 0.50: [OK ] Y0=0.0223 (472s)
+[22:36:17]     kappa= 1.00: [OK ] Y0=-0.0118 (473s)
+[22:44:10]     kappa= 2.00: [OK ] Y0=-0.0381 (473s)
+[22:44:10] 
+  Phase diagram:
+[22:44:10]     kappa      linear        sqrt   quadratic
+[22:44:10]      0.00      0.0780      0.0856      0.0822
+[22:44:10]      0.01      0.0690      0.0771      0.0789
+[22:44:10]      0.05      0.0483      0.0185      0.0683
+[22:44:10]      0.10      0.0115     -0.0368      0.0689
+[22:44:10]      0.20     -0.0276     -0.0644      0.0513
+[22:44:10]      0.50     -0.0568     -0.0792      0.0223
+[22:44:10]      1.00     -0.0630     -0.0859     -0.0118
+[22:44:10]      2.00     -0.0687      0.4018     -0.0381
+[22:44:10]   linear: stable up to kappa=2.0
+[22:44:10]   sqrt: stable up to kappa=2.0
+[22:44:10]   quadratic: stable up to kappa=2.0
+[22:44:10]   Saved results_overnight\impact_phase_transition.json
+[22:44:10]   Saved results_overnight\all_results.json
+[22:44:10] 
+============================================================
+[22:44:10] ALL DONE in 1533 min (25.5 hours)
+[22:44:10] ============================================================

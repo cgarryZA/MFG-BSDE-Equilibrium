@@ -1,0 +1,186 @@
+[07:13:20] Device: cuda
+[07:13:20] Started: 2026-04-09 07:13:20
+[07:13:20] 
+============================================================
+[07:13:20] 1. H mapping diagnostic
+[07:13:20] ============================================================
+[07:13:20]   Training model to extract learned h mapping...
+[07:37:28]      std   neural_h  exp(-0.5*std)    ratio
+[07:37:28]      0.1     0.4003         0.9512     0.42
+[07:37:28]      0.3     0.3750         0.8607     0.44
+[07:37:28]      0.5     0.3515         0.7788     0.45
+[07:37:28]      0.7     0.3075         0.7047     0.44
+[07:37:28]      1.0     0.2686         0.6065     0.44
+[07:37:28]      1.5     0.1792         0.4724     0.38
+[07:37:28]      2.0     0.1632         0.3679     0.44
+[07:37:28]      3.0     0.0529         0.2231     0.24
+[07:37:28]      5.0     0.0291         0.0821     0.36
+[07:37:28] 
+  Running FD FP with neural h mapping...
+[07:37:29]   FD FP with neural mapping:
+[07:37:29]   h: 1.000 0.791 0.650 0.555 0.490 0.446 0.418 0.399 0.385 0.377 0.370 0.366 0.363 0.361 0.360 0.359 0.359 0.358 0.358 0.357
+[07:37:29]   Final h=0.3572
+[07:37:29] 
+  Comparison:
+[07:37:29]     FD FP with exp(-0.5*std): h=0.732 (from earlier run)
+[07:37:29]     FD FP with neural mapping: h=0.3572
+[07:37:29]     Neural FP directly: h~0.24 (from earlier run)
+[07:37:29]   Saved results_missing\h_mapping_diagnostic.json
+[07:37:29]   Done in 24 min
+[07:37:29] 
+============================================================
+[07:37:29] 2. Equilibrium comparison + linearity
+[07:37:29] ============================================================
+[07:43:15]     final W2=0.0180, min=0.0180
+[07:43:15]   Saved results_missing\fp_more_agents.json
+[07:43:16]   n_agents=1024...
+[08:18:37]     final W2=0.0174, min=0.0174
+[08:18:37]   Saved results_missing\fp_more_agents.json
+[08:18:37]   n_agents=1024...
+[10:01:59]   Neural FP: h=0.2332, Y0=0.0467, W2=0.0194
+[10:01:59]   FD at h=0.2332: V=0.0882, spread=1.6877
+[10:01:59]   FD baseline (h=1): V=0.3840
+[10:08:00]     final W2=0.0129, min=0.0129
+[10:08:00]   Saved results_missing\fp_more_agents.json
+[10:08:01]   n_agents=2048...
+[10:21:14]   Linearity test:
+[10:21:14]     std=0.1: Z = -0.1929*q + 0.2154, R²=0.9241
+[10:21:14]     std=1.0: Z = -0.1929*q + 0.1663, R²=0.9241
+[10:21:14]     std=3.0: Z = -0.1929*q + 0.1960, R²=0.9241
+[10:21:14]   Saved results_missing\equilibrium.json
+[10:21:14]   Done in 164 min
+[10:21:14] 
+============================================================
+[10:21:14] 3. Scale test K=1,2,5
+[10:21:14] ============================================================
+[10:21:14]   K=1 (d=2)...
+[10:40:29]   K=1: Y0=0.0752, loss=9.1381e-04, 19m
+[10:40:29]   K=2 (d=4)...
+[10:42:40]     final W2=0.0122, min=0.0122
+[10:42:40]   Saved results_missing\fp_more_agents.json
+[10:42:41]   n_agents=2048...
+[11:07:50]   K=2: Y0=-0.0728, loss=2.3480e-03, 27m
+[11:07:50]   K=5 (d=10)...
+[12:30:15]     final W2=0.0071, min=0.0067
+[12:30:15]   Saved results_missing\fp_more_agents.json
+[12:30:15]   Done in 421 min
+[12:30:15] 
+============================================================
+[12:30:15] 10. Jump BSDE
+[12:30:15] ============================================================
+[12:30:15]   Training jump BSDE (5000 iter)...
+[12:31:44]   K=5: Y0=-0.3041, loss=5.8556e-02, 84m
+[12:31:44]   Saved results_missing\scale_test.json
+[12:31:44]   Done in 131 min
+[12:31:44] 
+============================================================
+[12:31:44] 4. FiLM + FP
+[12:31:44] ============================================================
+[13:04:36]     final W2=0.0071, min=0.0070
+[13:04:36]   Saved results_missing\fp_more_agents.json
+[13:04:36]   Done in 428 min
+[13:04:36] 
+============================================================
+[13:04:36] 8. Jump BSDE (fixed: learns U_a, U_b separately)
+[13:04:36] ============================================================
+[13:04:36]   Training jump BSDE with learned U_a, U_b (5000 iter)...
+[13:06:19]   Jump: Y0=0.2824, loss=1.6033e-02
+[13:06:19]   Training diffusion BSDE (5000 iter)...
+[13:38:25] 
+  Spread comparison:
+[13:38:25]     Jump BSDE:      1.3333
+[13:38:25]     Diffusion BSDE: 1.3333
+[13:38:25]     FD (Delta=1):   1.6511
+[13:38:25]     2/alpha:        1.3333
+[13:38:25]   Saved results_missing\jump_bsde.json
+[13:38:25]   Done in 68 min
+[13:38:25] 
+============================================================
+[13:38:25] ALL DONE in 1102 min (18.4 hours)
+[13:38:25] ============================================================
+[13:38:25]   fd_grid: OK
+[13:38:25]   fd_fp: OK
+[13:38:25]   equilibrium: OK
+[13:38:25]   scale: OK
+[13:38:25]   film_fp: OK
+[13:38:25]   common_noise: OK
+[13:38:25]   horizon: OK
+[13:38:25]   harder_impact: OK
+[13:38:25]   fp_agents: OK
+[13:38:25]   jump_bsde: OK
+[13:38:25]   Saved results_missing\summary.json
+[13:40:50]   Jump: Y0=0.2292, loss=1.2261e-03
+[13:40:50]   Training diffusion BSDE (5000 iter)...
+[14:06:20] 
+  Spread comparison at q=0:
+[14:06:20]     Jump BSDE:      2.7929  (U_a=-0.8461, U_b=-0.6135)
+[14:06:20]     Diffusion BSDE: 1.3333  (structurally = 2/alpha)
+[14:06:20]     FD (Delta=1):   1.6562  (ground truth)
+[14:06:20]     2/alpha:        1.3333
+[14:06:20]     Gap from FD: jump=1.1367, diffusion=0.3229
+[14:06:20]   Saved results_missing\jump_bsde.json
+[14:06:20]   Done in 62 min
+[14:06:20] 
+============================================================
+[14:06:20] ALL DONE in 1106 min (18.4 hours)
+[14:06:20] ============================================================
+[14:06:20]   equilibrium: OK
+[14:06:20]   scale: OK
+[14:06:20]   film_fp: OK
+[14:06:20]   common_noise: OK
+[14:06:20]   horizon: OK
+[14:06:20]   harder_impact: OK
+[14:06:20]   fp_agents: OK
+[14:06:20]   jump_bsde: OK
+[14:06:20]   Saved results_missing\summary.json
+[14:36:04]   W2 final=0.0210, h final=0.2085
+[14:36:04]   Saved results_missing\film_fp.json
+[14:36:04]   Done in 124 min
+[14:36:04] 
+============================================================
+[14:36:04] 5. Common noise sweep
+[14:36:04] ============================================================
+[14:48:12]   sigma=0.0: Y0=0.1371, h_gap=0.3618
+[15:00:24]   sigma=0.1: Y0=0.1389, h_gap=0.3563
+[15:01:43]   CRASHED after 26 min
+[15:01:43] Traceback (most recent call last):
+  File "D:\DeepBSDE\scripts\run_missing_only.py", line 81, in run_safe
+    result = func()
+  File "D:\DeepBSDE\scripts\run_missing_only.py", line 480, in <lambda>
+    r6 = run_safe("5. Common noise sweep", lambda: exp_common_noise(device))
+                                                   ~~~~~~~~~~~~~~~~^^^^^^^^
+  File "D:\DeepBSDE\scripts\run_missing_only.py", line 271, in exp_common_noise
+    r = slv.train(); slv.model.eval()
+  File "D:\DeepBSDE\solver.py", line 1713, in train
+    loss.backward()
+    ~~~~~~~~~~~~~^^
+  File "C:\Users\Christian\AppData\Roaming\Python\Python313\site-packages\torch\_tensor.py", line 626, in backward
+    torch.autograd.backward(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        self, gradient, retain_graph, create_graph, inputs=inputs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Christian\AppData\Roaming\Python\Python313\site-packages\torch\autograd\__init__.py", line 347, in backward
+    _engine_run_backward(
+    ~~~~~~~~~~~~~~~~~~~~^
+        tensors,
+        ^^^^^^^^
+    ...<5 lines>...
+        accumulate_grad=True,
+        ^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Christian\AppData\Roaming\Python\Python313\site-packages\torch\autograd\graph.py", line 823, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        t_outputs, *args, **kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )  # Calls into the C++ engine to run the backward pass
+    ^
+RuntimeError: CUDA error: unspecified launch failure
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+

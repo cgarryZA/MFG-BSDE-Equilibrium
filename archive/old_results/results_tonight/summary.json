@@ -1,0 +1,16 @@
+{
+  "bsdej_warmstart_T20": {
+    "spread_q0": 2.6356680005619664,
+    "best_loss": 0.10938304938859016
+  },
+  "bsdej_nonstationary": "done",
+  "maddpg_N5": {
+    "error": "MADDPGTrainer.__init__() got an unexpected keyword argument 'Delta'"
+  },
+  "q20": {
+    "error": "'delta_a'"
+  },
+  "q50": {
+    "error": "'delta_a'"
+  }
+}

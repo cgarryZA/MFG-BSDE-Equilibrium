@@ -1,125 +1,96 @@
-# DeepMVBSDEJ: Architectural Conditions for Mean-Field Deep BSDE Solvers
+# MFG-BSDE-Equilibrium
 
-Investigates when and why distribution-dependent mean-field coupling becomes learnable in deep BSDE solvers for market-making. Extends the [DeepBSDE-LOB](https://github.com/cgarryZA/DeepBSDE-LOB) solver with law encoders, two-stream architecture, and controlled pathway experiments.
+Deep BSDE solvers and multi-agent reinforcement learning for the Cont-Xiong (2024)
+dealer market-making model. MSc dissertation repo.
 
-**Paper:** "When Does Mean-Field Structure Matter? Distribution Dependence, Representation Collapse, and Architectural Constraints in Deep BSDE Market-Making"
+## Overview
 
-## Key Findings
+Validates deep BSDE methods against a game with exact benchmarks (Cont-Xiong
+Algorithm 1) and extends to:
+- **BSDEJ** with jumps (Wang et al. 2023 deep BSDE for jump processes)
+- **Continuous inventory** (diffusion approximation with Z ≠ 0)
+- **Multi-asset** (curse of dimensionality regime)
+- **Heterogeneous agents** (asymmetric risk aversion)
+- **Common noise** (systematic price shocks → conditional MV-BSDE)
+- **Tacit collusion** (decentralised MADDPG at N=2 and N=5)
 
-1. **Two silent failure modes** suppress mean-field effects: BatchNorm erasing broadcast features, and mean-pooled DeepSets collapsing distributional variance.
-2. **After correction**, the competitive factor h varies 17x across population shapes and quotes shift measurably.
-3. **However**, all policy variation comes from direct subnet conditioning — the BSDE generator pathway alone does not propagate the signal to controls (h-only model produces identical Z despite 17x h variation).
-4. Learning a correct economic signal is **not sufficient** for it to affect behaviour through the BSDE dynamics.
-
-## Model Hierarchy
-
-| Model | State | MF Coupling | Key Feature |
-|-------|-------|------------|-------------|
-| `contxiong_lob` | 2D (S, q) | None | Diffusion surrogate baseline |
-| `contxiong_lob_mv` | 2D (S, q) | Law encoder | Distribution-dependent coupling |
-| `contxiong_lob_adverse` | 3D (S, q, signal) | None | Price-dependent execution |
-| `contxiong_lob_mv_adverse` | 3D (S, q, signal) | Law encoder | **Full model** |
-
-## Law Encoders
-
-Four population distribution representations, all with the same interface:
-
-| Encoder | Features | Learnable | embed_dim |
-|---------|----------|-----------|-----------|
-| Moments | mean, var, skew, mean\|q\|, max\|q\|, std | No | 6 |
-| Quantiles | mean + 5 quantiles | No | 6 |
-| Histogram | Soft Gaussian bins | No | 20 |
-| DeepSets | Permutation-invariant NN | **Yes** | 16 |
-
-## Installation
-
-```bash
-git clone https://github.com/cgarryZA/DeepMVBSDEJ.git
-cd DeepMVBSDEJ
-pip install torch numpy matplotlib
-```
-
-## Quick Start
-
-```bash
-# Base model (diffusion surrogate)
-python main.py --config configs/lob_d2.json --exp_name base --device auto
-
-# MV model with DeepSets encoder
-python main.py --config configs/lob_d2_mv.json --exp_name mv_deepsets --device auto
-
-# Adverse selection (3D, genuinely multi-dimensional)
-python main.py --config configs/lob_d3_adverse.json --exp_name adverse --device auto
-
-# Full model: MV + adverse selection
-python main.py --config configs/lob_d3_mv_adverse.json --exp_name full --device auto
-```
-
-## Experiments
-
-```bash
-# Reproduce ALL paper results (main sensitivity, encoder ablation,
-# multi-seed, placebo, disentanglement, h-only, generalisation, penalty sweep)
-python scripts/run_all_for_paper.py --device cuda
-
-# Quick version (~30 min instead of ~2.5h)
-python scripts/run_all_for_paper.py --device cuda --quick
-
-# Individual experiments
-python scripts/run_mv_experiments.py --device cuda          # Encoder ablation
-python scripts/law_sensitivity_test.py --train --device cuda # Law sensitivity
-python scripts/stability_frontier.py --device cuda           # Phase diagram
-python scripts/finite_difference_adverse.py --eta 0.5        # 3D FD baseline
-python scripts/run_floor_ablation.py --device cuda           # Floor ablation + clipping
-```
-
-## Repository Structure
+## Structure
 
 ```
-DeepMVBSDEJ/
-├── main.py                              # Training entry point
-├── solver.py                            # Models + solvers (MeanFieldSubNet, ContXiongLOBMVModel)
-├── config.py                            # Configuration
-├── registry.py                          # Equation registration
-├── equations/
-│   ├── base.py                          # Abstract base
-│   ├── law_encoders.py                  # 4 law encoder classes + registry
-│   ├── contxiong_lob.py                 # Diffusion surrogate (base)
-│   ├── contxiong_lob_mv.py              # + MV coupling (CompetitiveFactorNet)
-│   ├── contxiong_lob_adverse.py         # + adverse selection (3D)
-│   └── contxiong_lob_mv_adverse.py      # + both (full model)
-├── configs/                             # JSON experiment configs
+.
+├── solver_cx.py                     Neural Bellman solver (discrete inventory, Z=0)
+├── solver_cx_bsdej.py               BSDEJ solver — per-timestep networks
+├── solver_cx_bsdej_shared.py        BSDEJ solver — shared weights + warm-start (main)
+├── solver_cx_bsde_diffusion.py      Continuous inventory deep BSDE (Z ≠ 0)
+├── solver_cx_multiagent.py          MADDPG trainer (CX Section 6)
+├── solver_cx_multiasset.py          Multi-asset extension (K assets)
+├── equations/contxiong_exact.py     CX model definition
 ├── scripts/
-│   ├── run_all_for_paper.py             # Master script: ALL paper experiments
-│   ├── run_mv_experiments.py            # Encoder ablation + baselines
-│   ├── run_floor_ablation.py            # Floor ablation + clipping analysis
-│   ├── law_sensitivity_test.py          # Law sensitivity test
-│   ├── stability_frontier.py            # Phase diagram sweep
-│   ├── plot_stability.py                # Phase diagram plots
-│   └── finite_difference_adverse.py     # 3D FD baseline
-├── results_paper_final/                 # Reproducible results for paper
-└── report/preprint/                     # LaTeX source
+│   ├── cont_xiong_exact.py          Exact Algorithm 1 (linear algebra ground truth)
+│   ├── cont_xiong_pareto.py         Pareto optimum (collusion upper bound)
+│   ├── heterogeneous_agents.py      Asymmetric phi game
+│   ├── common_noise.py              CX with dW_S price shock
+│   ├── q_scaling_direct_v.py        Tabular V via L-BFGS
+│   ├── nonstationary_phi.py         Time-varying risk aversion
+│   ├── bsdej_n_scaling.py           BSDEJ at N=2,5,10,20,50
+│   ├── compensated_martingale_ablation.py  Wang et al. fix ablation
+│   ├── maddpg_analysis.py           Post-hoc statistics on MADDPG runs
+│   └── generate_paper_figures.py    Figure pipeline
+├── tests/                           Sanity test suite (pytest)
+├── report/                          LaTeX sources
+├── cluster/                         SLURM scripts for Hamilton
+├── results_final/                   Validated results (keep)
+├── results_cluster/                 MADDPG cluster output
+└── archive/                         Old runners and stale results
 ```
 
-## Citation
+## Running tests
 
-```bibtex
-@misc{garry2026deepmvbsdej,
-  author       = {Christian Garry},
-  title        = {{DeepMVBSDEJ}: {McKean-Vlasov} Jump-{BSDE} Solver for
-                  Market-Making in Limit Order Books},
-  year         = {2026},
-  howpublished = {\url{https://github.com/cgarryZA/DeepMVBSDEJ}},
-}
+Always run tests before kicking off long experiments:
+
+```bash
+./run_tests.sh          # fast tests (~1 min)
+./run_tests.sh --slow   # full suite with training accuracy checks (~5 min)
+./run_tests.sh -k bsdej # only BSDEJ tests
 ```
 
-## References
+## Running experiments
 
-- Cont, R. & Xiong, W. (2024). Dynamics of market making algorithms in dealer markets. *Math. Finance*, 34:467-521.
-- Han, J., Hu, R. & Long, J. (2022). Learning high-dimensional McKean-Vlasov FBSDEs. *SIAM J. Numer. Anal.*, 60(4):2208-2232.
-- Han, J., Jentzen, A. & E, W. (2018). Solving high-dimensional PDEs using deep learning. *PNAS*, 115(34):8505-8510.
-- Avellaneda, M. & Stoikov, S. (2008). High-frequency trading in a limit order book. *Quant. Finance*, 8(3):217-224.
+```bash
+# Exact solver (ground truth, fast)
+python scripts/cont_xiong_exact.py
 
-## License
+# Neural Bellman at Q=5 (standard)
+python main.py --config configs/cx_bellman_q5.json
 
-MIT
+# BSDEJ with warm-start (main deep BSDE result)
+python solver_cx_bsdej_shared.py
+
+# Extensions
+python scripts/heterogeneous_agents.py
+python scripts/common_noise.py
+python scripts/q_scaling_direct_v.py
+```
+
+## Key results
+
+| Result | Value | Source |
+|--------|-------|--------|
+| Neural Bellman spread error at Q=5 | 0.59% | `solver_cx.py` |
+| Direct-V spread error at Q=5 (with boundary fix) | 0.0001% | `scripts/q_scaling_direct_v.py` |
+| BSDEJ shared + warmstart error | 2.6% | `solver_cx_bsdej_shared.py` |
+| Compensated jump martingale fix | 264% → 2.7% | `scripts/compensated_martingale_ablation.py` |
+| Mean-field N→∞ rate | O(1/√N) confirmed to N=5000 | `scripts/cont_xiong_exact.py` |
+| MADDPG tacit collusion (20 seeds, N=2) | 15/20 above Nash, p=0.002 | `results_cluster/` |
+| MADDPG N=5 collusion | 5/5 above Nash | `results_final/maddpg_N5.json` |
+
+## Requirements
+
+```
+python >= 3.10
+torch >= 2.0
+numpy, scipy
+pytest (for tests)
+```
+
+See `environment.yml` for the full conda spec.

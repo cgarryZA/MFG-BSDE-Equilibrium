@@ -1,0 +1,54 @@
+[00:43:16] Device: cuda
+[00:43:16] Started: 2026-04-11 00:43:16
+[00:43:16] 
+============================================================
+[00:43:16] 1. Q=20,50 scaling (bigger network)
+[00:43:16] ============================================================
+[00:43:19]   Q=20...
+[00:43:19]     Exact: 1.4898
+[01:14:08]     Neural: 1.3682 (err=0.1216, 8.2%)
+[01:14:08]   Saved results_cx_overnight2\q_scaling.json
+[01:14:08]   Q=50...
+[01:14:12]     Exact: 1.4342
+[02:25:55]     Neural: 1.3682 (err=0.0660, 4.6%)
+[02:25:55]   Saved results_cx_overnight2\q_scaling.json
+[02:25:55]   Done in 103 min
+[02:25:55] 
+============================================================
+[02:25:55] 2. Continuous inventory solver
+[02:25:55] ============================================================
+[02:43:50]   Continuous vs exact at grid points:
+[02:43:50]   Max spread error: 0.0305
+[02:43:50]   Saved results_cx_overnight2\continuous.json
+[02:43:50]   Done in 18 min
+[02:43:50] 
+============================================================
+[02:43:50] 3. MADDPG collusion (5 rounds)
+[02:43:50] ============================================================
+[02:43:52]   Round 1/5...
+[04:16:24]     Spread: 1.7492
+[04:16:24]   Saved results_cx_overnight2\maddpg_rounds.json
+[04:16:24]   Round 2/5...
+[05:47:35]     Spread: 2.5980
+[05:47:35]   Saved results_cx_overnight2\maddpg_rounds.json
+[05:47:35]   Round 3/5...
+[07:18:01]     Spread: 2.0592
+[07:18:01]   Saved results_cx_overnight2\maddpg_rounds.json
+[07:18:01]   Round 4/5...
+[08:49:07]     Spread: 1.6451
+[08:49:07]   Saved results_cx_overnight2\maddpg_rounds.json
+[08:49:07]   Round 5/5...
+[10:20:24]     Spread: 2.6634
+[10:20:24]   Saved results_cx_overnight2\maddpg_rounds.json
+[10:20:24]   Mean spread: 2.1430 +/- 0.4214
+[10:20:24]   Nash: 1.5153
+[10:20:24]   Above Nash? YES
+[10:20:24]   Done in 457 min
+[10:20:24] 
+============================================================
+[10:20:24] ALL DONE in 577 min
+[10:20:24] ============================================================
+[10:20:24]   q_scaling: OK
+[10:20:24]   continuous: OK
+[10:20:24]   maddpg: OK
+[10:20:24]   Saved results_cx_overnight2\summary.json

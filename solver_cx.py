@@ -45,11 +45,22 @@ class CXSolver:
     """
 
     def __init__(self, eqn, device=None, lr=1e-3, n_iter=5000,
-                 fixed_avg_da=None, fixed_avg_db=None, verbose=True):
+                 fixed_avg_da=None, fixed_avg_db=None, verbose=True,
+                 early_stopping=True, es_patience=500, es_min_delta=1e-8,
+                 es_warmup=1000):
         self.eqn = eqn
         self.device = device or torch.device("cpu")
         self.n_iter = n_iter
         self.verbose = verbose
+
+        # Early stopping — avoid brute-forcing iterations when converged
+        self.early_stopping = early_stopping
+        if early_stopping:
+            from utils import EarlyStopping
+            self.es = EarlyStopping(patience=es_patience, min_delta=es_min_delta,
+                                    warmup=es_warmup)
+        else:
+            self.es = None
 
         # Scale network with problem size
         nq = eqn.nq
@@ -114,6 +125,13 @@ class CXSolver:
                       f"spread(0)={spread_q0:.4f}")
                 history.append({"step": step, "loss": loss.item(), "V_q0": v_q0,
                                 "spread_q0": spread_q0})
+
+            # Early stopping — bail when loss plateaus
+            if self.es is not None and self.es(loss.item()):
+                if self.verbose:
+                    print(f"  Early stopping at step {step} "
+                          f"(best loss={self.es.best_loss:.4e})")
+                break
 
         self.value_net.eval()
         with torch.no_grad():

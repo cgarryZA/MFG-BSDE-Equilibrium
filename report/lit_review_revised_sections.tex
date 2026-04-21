@@ -1,0 +1,188 @@
+% REVISED sections for the literature review.
+% Sections 1-3 (BSDE theory, numerical methods, MFG/MV-FBSDE) remain as-is.
+% This replaces Section 4 (Empirical) and Section 5 (Conclusion).
+
+% ============================================================
+\section{Empirical Results and Financial Applications}\label{sec:lit-empirical-revised}
+
+The translation of deep learning methods for BSDEs from mathematical
+benchmarks to financial market applications is an active frontier,
+with recent progress in three directions: deep BSDE solvers for
+jump-diffusion processes, multi-agent game-theoretic models of dealer
+markets, and the emergence of tacit collusion from decentralised
+algorithmic learning.
+
+\paragraph{Deep BSDE with jumps.}
+The extension of the deep BSDE paradigm to jump-diffusion processes
+is essential for financial applications where discrete events (order
+executions, defaults) punctuate continuous price dynamics.
+\citet{wang2023} developed deep learning methods for high-dimensional
+fully nonlinear PIDEs and coupled FBSDEs with jumps (FBSDEJs), where
+the jump-diffusion process is driven by both Brownian motion and a
+compensated Poisson random measure.  Their method parameterises the
+jump coefficients $U$ alongside the diffusion coefficient $Z$ as
+neural networks, achieving convergence in up to 100 dimensions.
+This is directly relevant to the dealer market-making problem, where
+inventory changes via discrete Poisson execution events.
+\citet{lu2024} applied deep reinforcement learning (actor-critic)
+to multi-agent relative investment games in a jump-diffusion market,
+demonstrating that neural network solutions converge to derived
+constant Nash equilibria.  Their computational framework provides a
+template for combining deep learning with stochastic games under
+jump dynamics.
+
+\paragraph{The Cont--Xiong dealer market model.}
+The most comprehensive treatment of multi-agent market-making as a
+stochastic differential game is \citet{cont2024}.  They model $N$
+competing dealers in a continuous-time dealer market, formulated as
+a stochastic differential game of intensity control with partial
+information.  Each dealer's execution probability depends on their
+own quote and those of all competitors through a logistic softmax
+function (their equation~6), creating strategic interaction.
+Competition is modelled as a Nash equilibrium, characterised by a
+system of coupled Hamilton--Jacobi--Bellman equations (their
+equation~28), for which existence is established via Brouwer's fixed
+point theorem.  Collusion is modelled as a Pareto optimum of the
+joint objective.  A key contribution is the fictitious play algorithm
+(their Algorithm~1) for computing Nash equilibria by iterating
+between policy evaluation (solving linear Bellman systems) and best
+response calculation.
+
+Critically, \citet{cont2024} show via multi-agent deep reinforcement
+learning (Decentralised MADDPG) that competing market-making
+algorithms, learning independently from their own trade outcomes
+without any shared information, converge to spread levels strictly
+above the Nash equilibrium --- a phenomenon they term ``tacit
+collusion.''  This finding has significant regulatory implications:
+the decentralised interaction of autonomous pricing algorithms may
+produce outcomes resembling explicit cartel behaviour, even when no
+coordination is intended.
+
+\paragraph{Algorithmic collusion: broader evidence.}
+The tacit collusion phenomenon extends beyond dealer markets.
+\citet{calvano2020} first demonstrated in a Bertrand oligopoly that
+Q-learning agents converge to supracompetitive prices, establishing
+the ``algorithmic collusion'' paradigm.  Subsequent work has explored
+the robustness and mechanisms of this phenomenon.
+\citet{deng2025} conducted a comprehensive study of competitive and
+collusive behaviours across multiple Bertrand oligopoly variants,
+showing that the degree of algorithmic collusion depends critically
+on the choice of RL algorithm: some algorithms (DQN, PPO) exhibit
+stronger collusive tendencies than others.  This raises the question
+of whether the collusion result is an artefact of the learning
+algorithm or a genuine equilibrium phenomenon.
+
+In the dealer market setting specifically, \citet{wang2025} study
+multi-agent reinforcement learning for market making under
+competition, showing that adaptive incentive control can support
+competitive coexistence and mitigate collusive outcomes.  This
+suggests that market design interventions, not just regulation, can
+address algorithmic collusion.
+
+\paragraph{The BSDE connection.}
+A largely unexplored avenue is the application of deep BSDE methods
+--- rather than model-free reinforcement learning --- to the
+Cont--Xiong game.  The dealer's value function satisfies a backward
+stochastic differential equation with Poisson jumps (BSDEJ), where
+the jump coefficients encode the value changes on order execution.
+The Cont--Xiong HJB system (their equation~28) is precisely the
+stationary limit of this BSDEJ.  This observation connects the
+game-theoretic market-making literature to the BSDE numerical methods
+surveyed in Section~\ref{sec:lit-numerical}, creating the possibility
+of importing convergence guarantees and architectural insights from
+the deep BSDE literature into the multi-agent dealer market setting.
+
+\paragraph{Recent surveys.}
+\citet{hu2024survey} provide a comprehensive survey of recent
+developments in machine learning methods for stochastic control and
+games, covering deep BSDE methods, policy gradient approaches, and
+mean-field game algorithms.  Their treatment highlights the growing
+convergence between the BSDE, MFG, and multi-agent RL communities ---
+precisely the intersection that this thesis occupies.
+
+\paragraph{Synthesis.}
+The empirical landscape reveals a specific gap: the Cont--Xiong
+dealer market model provides a well-characterised benchmark with
+exact Nash equilibria (Algorithm~1), exact Pareto optima
+(Algorithm~0), and documented tacit collusion via MADDPG, yet no
+work has applied deep BSDE methods to this model.  The deep BSDE
+literature has demonstrated solvers for jump-diffusion processes in
+high dimensions, and the game-theoretic literature has characterised
+the equilibrium structure of competing market makers, but the two
+have not been combined.  This thesis addresses this gap.
+
+
+% ============================================================
+\section{Conclusion and Open Problems}\label{sec:lit-conclusion-revised}
+
+The literature reviewed here establishes four facts:
+(i)~the mathematical theory of BSDEs with jumps and the
+nonlinear Feynman--Kac theorem provide the rigorous foundation for
+stochastic control problems with discrete events;
+(ii)~deep learning methods can solve BSDEs and FBSDEs in high
+dimensions without the curse of dimensionality;
+(iii)~the Cont--Xiong dealer market model provides a precisely
+characterised multi-agent game with known Nash equilibria, Pareto
+optima, and documented tacit collusion;
+but (iv)~no existing work applies deep BSDE methods to the
+Cont--Xiong model or validates neural solvers against its exact
+equilibrium benchmarks.
+
+\paragraph{Scope of the present thesis.}
+This thesis addresses the identified gap through four computational
+contributions.
+
+First, the Cont--Xiong dealer market model is formulated as a
+backward stochastic differential equation with Poisson jumps
+(BSDEJ), establishing that the coupled HJB system of
+\citet{cont2024} is the stationary limit of a well-posed BSDEJ.
+This connection places the numerical methods within the theoretical
+framework of BSDE theory.
+
+Second, a neural Bellman solver is developed that learns the value
+function $V(q)$ on the discrete inventory grid and derives optimal
+quotes from the first-order conditions of the BSDEJ generator.
+The solver is validated against the exact Algorithm~1 of
+\citet{cont2024}, achieving sub-1\% error at the Nash equilibrium
+for $N = 1, 2, 5, 10$ competing dealers.  A neural fictitious play
+algorithm is shown to converge to the Nash equilibrium in 10
+iterations.
+
+Third, the Pareto optimum (explicit collusion benchmark) is
+computed via policy iteration on the joint state space, establishing
+the upper bound on spreads.  The ordering Nash $<$ Monopolist $<$
+Pareto is verified, providing reference bounds for the tacit
+collusion analysis.
+
+Fourth, tacit collusion is investigated using a decentralised
+multi-agent deep deterministic policy gradient (MADDPG) algorithm
+following \citet{cont2024}.  Multiple independent training rounds
+are conducted to establish statistical significance of the finding
+that learned spreads exceed the Nash equilibrium level.  The
+information structure is varied from full information (converges to
+Nash) to no information (converges to monopolist level), with
+decentralised learning producing spreads between these bounds.
+
+\paragraph{Methodological contribution.}
+The primary methodological contribution is the validation of a
+neural solver against the exact Cont--Xiong equilibrium.  Unlike
+previous deep BSDE applications to financial models, where ground
+truth is typically unavailable or limited to simple analytical
+solutions, the Cont--Xiong Algorithm~1 provides an exact benchmark
+at any number of dealers.  This enables rigorous error quantification
+and architectural diagnosis --- determining not just \emph{whether}
+the solver converges, but \emph{how accurately} and \emph{why}.
+
+\paragraph{Open problems.}
+Several directions remain for future work.  The extension to
+common noise (systematic market shocks affecting all agents) would
+require the deep signature approach of \citet{hu2025} or the
+conditional distribution framework of \citet{carmona2018a}.  The
+continuous-inventory formulation, where $q \in \mathbb{R}$ rather
+than a discrete grid, would benefit from the full deep BSDE
+architecture with learned $Z$-processes.  The multi-asset
+generalisation, where dealers make markets in multiple correlated
+instruments, would test the curse-of-dimensionality advantage of
+neural methods over grid-based algorithms.  Finally, calibration
+to real dealer market data would validate the economic content of
+the model beyond its theoretical properties.
