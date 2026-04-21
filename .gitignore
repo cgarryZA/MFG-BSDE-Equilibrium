@@ -22,3 +22,5 @@ report/preprint/*.pdf
 *.toc
 *.fdb_latexmk
 *.fls
+*.bbl
+*.blg
