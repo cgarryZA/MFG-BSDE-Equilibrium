@@ -13,3 +13,7 @@ __pycache__/
 *.out
 *.synctex.gz
 report/preprint/*.pdf
+
+# Local IDE / editor settings
+.vscode/
+.claude/settings.local.json
