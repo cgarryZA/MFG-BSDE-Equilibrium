@@ -1,0 +1,202 @@
+\chapter{Proof sketches}
+\label{app:proofs}
+
+This appendix expands on proof sketches that would clutter the main text. The results are classical; I present them at the level of detail needed to be convincing in a study draft, not at the polish of a published proof.
+
+\section{Existence of BSDE solutions: full Pardoux--Peng argument}
+\label{app:pardoux-peng-full}
+
+This is the detailed version of the proof sketch in \S\ref{sec:bsde}, Theorem~\ref{thm:pardoux-peng}. Fix the time horizon $T$, the forward Markov process $X$, and a generator $f$ + terminal $g$ satisfying Assumption~\ref{ass:lipschitz} with Lipschitz constant $K$.
+
+\paragraph{Step 1: function-space setup.}  Let $\mathcal{H}^2_\beta$ denote the space of pairs of progressively-measurable processes $(Y, Z)$ with $Y$ scalar-valued, $Z$ $d$-valued, equipped with the norm
+\begin{equation}
+  \|(Y, Z)\|_\beta^2 := \E\int_0^T e^{\beta t}\bigl(|Y_t|^2 + \|Z_t\|^2\bigr) \, \diff t.
+\end{equation}
+For $\beta \geq 0$ this is a Banach space equivalent to the unweighted $L^2$ space. The parameter $\beta$ will be chosen large enough below.
+
+\paragraph{Step 2: the map $\Theta$.}  Given $(y, z) \in \mathcal{H}^2_\beta$, define
+\begin{equation}
+  \xi = g(X_T) + \int_0^T f(s, X_s, y_s, z_s) \, \diff s.
+\end{equation}
+We claim $\xi \in L^2(\Omega, \mathcal{F}_T, \Prob)$. To see this, using the Lipschitz bound and $|f(t, x, y, z)| \leq |f(t, x, 0, 0)| + K(|y| + \|z\|)$,
+\begin{align*}
+  \E[\xi^2] &\leq 2 \E[g(X_T)^2] + 2 T \E\int_0^T f(s, X_s, y_s, z_s)^2 \, \diff s \\
+  &\leq 2 \E[g(X_T)^2] + 6 T \E\int_0^T |f(s, X_s, 0, 0)|^2 \, \diff s + 6 T K^2 \|(y, z)\|_\beta^2,
+\end{align*}
+finite by Assumption~\ref{ass:lipschitz}. Apply Theorem~\ref{thm:martingale-rep}: there is a unique adapted $\tilde Z \in L^2(\diff t \otimes \Prob)$ with
+\begin{equation}
+  \E[\xi \mid \Ft] = \E[\xi] + \int_0^t \tilde Z_s \, \diff W_s.
+\end{equation}
+Define
+\begin{align}
+  Y_t &:= \E[\xi \mid \Ft] - \int_0^t f(s, X_s, y_s, z_s) \, \diff s, \\
+  Z_t &:= \tilde Z_t.
+\end{align}
+Verify: $Y_T = \xi - \int_0^T f \, \diff s = g(X_T)$. Also
+\begin{equation}
+  \diff Y_t = \tilde Z_t \diff W_t - f(t, X_t, y_t, z_t) \diff t,
+\end{equation}
+so $(Y, Z)$ solves the BSDE with generator frozen at $(y, z)$. This defines the map $\Theta : \mathcal{H}^2_\beta \to \mathcal{H}^2_\beta$, $\Theta(y, z) = (Y, Z)$.
+
+\paragraph{Step 3: contraction estimate.}  Take two inputs $(y^1, z^1), (y^2, z^2)$ with outputs $(Y^1, Z^1), (Y^2, Z^2)$. Set $\tilde y = y^1 - y^2, \tilde z = z^1 - z^2, \tilde Y = Y^1 - Y^2, \tilde Z = Z^1 - Z^2, \tilde f = f(\cdot, y^1, z^1) - f(\cdot, y^2, z^2)$. Then
+\begin{equation}
+  \diff \tilde Y_t = -\tilde f_t \, \diff t + \tilde Z_t \, \diff W_t, \qquad \tilde Y_T = 0.
+\end{equation}
+Apply It\^o's formula to $e^{\beta t} \tilde Y_t^2$:
+\begin{equation}
+  \diff(e^{\beta t} \tilde Y_t^2) = \beta e^{\beta t} \tilde Y_t^2 \diff t + 2 e^{\beta t} \tilde Y_t \diff \tilde Y_t + e^{\beta t} (\diff \tilde Y_t)^2.
+\end{equation}
+Substituting and using $(\diff \tilde Y_t)^2 = \|\tilde Z_t\|^2 \diff t$,
+\begin{multline*}
+  \diff(e^{\beta t} \tilde Y_t^2) = \beta e^{\beta t} \tilde Y_t^2 \diff t - 2 e^{\beta t} \tilde Y_t \tilde f_t \diff t + 2 e^{\beta t} \tilde Y_t \tilde Z_t \diff W_t + e^{\beta t} \|\tilde Z_t\|^2 \diff t.
+\end{multline*}
+Integrating from $0$ to $T$, taking expectations (the It\^o integral is a true martingale by Burkholder--Davis--Gundy under the $L^2$ assumptions), using $\tilde Y_T = 0$,
+\begin{equation}
+  -\E[\tilde Y_0^2] = \E \int_0^T e^{\beta t} \bigl(\beta \tilde Y_t^2 - 2 \tilde Y_t \tilde f_t + \|\tilde Z_t\|^2\bigr) \diff t.
+\end{equation}
+Using $|2 \tilde Y_t \tilde f_t| \leq \tilde Y_t^2 / \epsilon + \epsilon \tilde f_t^2$ (for any $\epsilon > 0$) and the Lipschitz bound $|\tilde f_t| \leq K(|\tilde y_t| + \|\tilde z_t\|)$, so $\tilde f_t^2 \leq 2 K^2 (\tilde y_t^2 + \|\tilde z_t\|^2)$:
+\begin{multline*}
+  0 \leq \E[\tilde Y_0^2] + \E \int_0^T e^{\beta t} \bigl[(\beta - 1/\epsilon) \tilde Y_t^2 + \|\tilde Z_t\|^2 - 2 \epsilon K^2 (\tilde y_t^2 + \|\tilde z_t\|^2)\bigr] \diff t.
+\end{multline*}
+Choose $\epsilon = 1/(4 K^2 + 1)$. Then $\beta - 1/\epsilon = \beta - 4 K^2 - 1$; for $\beta \geq 4 K^2 + 2$ this is $\geq 1$. Discarding the $\tilde Y_0^2$ term (non-negative),
+\begin{multline*}
+  \|(\tilde Y, \tilde Z)\|_\beta^2 \leq 2 \epsilon K^2 \|(\tilde y, \tilde z)\|_\beta^2 = \frac{2 K^2}{4 K^2 + 1} \|(\tilde y, \tilde z)\|_\beta^2 < \frac{1}{2} \|(\tilde y, \tilde z)\|_\beta^2.
+\end{multline*}
+So $\Theta$ is a strict contraction for $\beta \geq 4 K^2 + 2$.
+
+\paragraph{Step 4: conclusion.}  Banach's fixed-point theorem gives a unique $(Y, Z) \in \mathcal{H}^2_\beta$ with $\Theta(Y, Z) = (Y, Z)$, which is the unique BSDE solution. The $\sup_t$ bound comes from Doob's inequality applied to the martingale piece of $Y$. Uniqueness is inherited from the contraction.
+
+\section{Deep BSDE consistency: Beck--E--Jentzen theorem}
+\label{app:beck-jentzen}
+
+A minimal version of the consistency result \cite{beck2019}. Let $V : [0, T] \times \R^n \to \R$ be the true value function and $V^{\Delta t, W}_\theta$ the output of the HJE Algorithm with discretisation $\Delta t$ and network width $W$, trained to a local minimum of the loss. Then
+\begin{equation}
+  |V(0, x_0) - V^{\Delta t, W}_\theta(0)| \leq C\left(\sqrt{\Delta t} + \text{NNError}(W)\right) + O(1/\sqrt{M}),
+\end{equation}
+where $M$ is the Monte Carlo sample size and $\text{NNError}(W) \to 0$ as $W \to \infty$ (universal approximation).
+
+The three error sources are the Euler-scheme discretisation, the function-class approximation, and the Monte Carlo statistical error. In practice the second term dominates (for narrow networks), which is why expressive architectures matter. The rate constants depend on the BSDE's Lipschitz constants and the forward SDE's regularity.
+
+\section{Propagation of chaos: Sznitman's coupling}
+\label{app:sznitman}
+
+A sketch of Theorem~\ref{thm:poc}. Fix Lipschitz $b, \sigma$ in $(x, \mu)$. Let $X^{(i)}$ solve the $N$-particle system \eqref{eq:ips} with independent driving Brownian motions $W^{(i)}$. Define i.i.d.\ copies $X^{\infty, i}$ of the MV-SDE solution \eqref{eq:mv-sde} \emph{driven by the same $W^{(i)}$}. The coupling makes $X^{(i)} - X^{\infty, i}$ start at zero; we bound its growth.
+
+By Lipschitz,
+\begin{equation}
+  |b(X^{(i)}_t, \mu^N_t) - b(X^{\infty, i}_t, \mu_t)| \leq K (|X^{(i)}_t - X^{\infty, i}_t| + W_2(\mu^N_t, \mu_t)),
+\end{equation}
+and similarly for $\sigma$. Apply It\^o / BDG to $|X^{(i)}_t - X^{\infty, i}_t|^2$ and take $\max_i$ expectations:
+\begin{equation}
+  \E\Bigl[\sup_{t \leq T} |X^{(i)}_t - X^{\infty, i}_t|^2\Bigr] \leq C(T) \int_0^T \bigl(\E[|X^{(i)}_s - X^{\infty, i}_s|^2] + \E[W_2(\mu^N_s, \mu_s)^2]\bigr) \diff s.
+\end{equation}
+The Wasserstein term on the right is bounded by the empirical-process rate $\E[W_2(\mu^N, \mu)^2] = O(1/N^{2/d} \vee 1/N)$ depending on dimension and moment conditions; in dimension $d = 1$ with finite second moment we get $O(1/N)$. Applying Gronwall to the resulting inequality gives the bound $O(1/N)$.
+
+This is the heart of the argument. The full proof handles $k$-tuples of particles by a uniform-in-$k$ version of the same estimate; see Sznitman \cite{sznitman1991}, Carmona--Delarue \cite{carmona2018} Vol.~I \S3.
+
+\chapter{Implementation details}
+\label{app:implementation}
+
+\section{Code pointers by chapter}
+
+For reproducibility, this appendix maps chapter results to the specific files and scripts that produce them.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Chapter result & Code file & Script \\ \midrule
+Ch 4 exact benchmark ($N=2$) & \texttt{equations/contxiong\_exact.py} & \texttt{scripts/cont\_xiong\_exact.py} \\
+Ch 4 neural Bellman & \texttt{solver\_cx.py} & (runs via \texttt{main.py}) \\
+Ch 4 Pareto benchmark & (same) & \texttt{scripts/cont\_xiong\_pareto.py} \\
+Ch 4 direct-$V$ & \texttt{solver\_cx.py} & \texttt{scripts/q\_scaling\_direct\_v.py} \\
+Ch 4 continuous inventory & \texttt{solver\_cx\_bsde\_diffusion.py} & (direct invocation) \\
+Ch 4 BSDEJ shared-weights & \texttt{solver\_cx\_bsdej\_shared.py} & (direct invocation) \\
+Ch 4 compensated-martingale ablation & (same) & \texttt{scripts/compensated\_martingale\_ablation.py} \\
+Ch 5 MADDPG & \texttt{solver\_cx\_multiagent.py} & \texttt{cluster/submit\_maddpg.sh} \\
+Ch 5 cluster aggregation & --- & \texttt{cluster/collect\_results.py} \\
+Ch 5 post-hoc statistics & --- & \texttt{scripts/maddpg\_analysis.py} \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\section{Typical hyperparameters}
+
+For the stationary neural Bellman solver (Chapter~\ref{ch:bellman}):
+\begin{itemize}[leftmargin=2em]
+  \item $V_\theta$: 2-hidden-layer MLP, widths $\{64, 64\}$, GELU activations.
+  \item Optimiser: Adam, learning rate $3 \times 10^{-4}$.
+  \item Batch size: 512 inventory samples, uniform on $[-Q, Q]$.
+  \item Inner loop: 1000 gradient steps per fictitious-play iteration.
+  \item Outer loop: 10 fictitious-play iterations.
+  \item Total training time: $\sim 1$ minute on a single GPU.
+\end{itemize}
+
+For the MADDPG cluster runs (Chapter~\ref{ch:nash}):
+\begin{itemize}[leftmargin=2em]
+  \item Actor: 3-hidden-layer MLP, widths $\{128, 128, 64\}$, LayerNorm + ReLU, output sigmoid-scaled to $[\delta_{\min}, \delta_{\max}]$.
+  \item Critic: 3-hidden-layer MLP, widths $\{128, 128, 64\}$.
+  \item Learning rates: actor $10^{-4}$, critic $10^{-3}$.
+  \item Target update rate: $\tau = 0.01$.
+  \item Exploration: Gaussian noise $\sigma_\varepsilon = 0.05$, decayed by factor $0.995$ per episode.
+  \item Replay buffer: size $10^6$, minibatch 256.
+  \item Episodes: 500, each of 500 environment steps.
+  \item Pretraining: 100 epochs of supervised MSE on the monopolist target.
+  \item Total training time per seed: $\sim 15$ minutes on a Tesla V100.
+\end{itemize}
+
+Full specifications are in \texttt{solver\_cx.py}, \texttt{solver\_cx\_multiagent.py}, and the cluster submission scripts.
+
+\section{Reproducibility notes}
+
+Results in Chapters~\ref{ch:bellman}--\ref{ch:nash} use fixed random seeds:
+\begin{itemize}[leftmargin=2em]
+  \item Neural Bellman solver: seed $42$ for the main benchmark; seeds $\{0, 1, 2, 3, 4\}$ used for the multi-seed robustness check (reported in \texttt{archive/old\_results/results\_multiseed/}).
+  \item MADDPG cluster: 20 independent seeds $\{0, 1, \ldots, 19\}$; seed is passed to both PyTorch and NumPy RNGs via \texttt{torch.manual\_seed} + \texttt{np.random.seed}.
+\end{itemize}
+All benchmark results from the main README's key-results table are committed under \texttt{archive/old\_results/} and recomputable with the provided scripts. The post-hoc statistical tests in Chapter~\ref{ch:nash} are replicable from these JSONs via \texttt{scripts/maddpg\_analysis.py}.
+
+\section{Hardware and runtime notes}
+
+Local runs (neural Bellman, small-batch BSDEJ, ablations): developed on a single NVIDIA RTX 3060 (6 GB) or CPU. Typical runtime $<5$ minutes.
+
+Cluster runs (20-seed MADDPG, Q-scaling sweeps, multi-asset curse-of-dimensionality): Durham University's Hamilton HPC. SLURM array jobs at partition \texttt{gpu-a100}; scripts in \texttt{cluster/submit\_*.sh}. Typical wall-clock time $15$--$60$ minutes per seed.
+
+\section{Dependencies}
+
+Python $\geq 3.10$; PyTorch $\geq 2.0$; NumPy; SciPy; Matplotlib; pytest for the test suite under \texttt{tests/}. The test suite (\texttt{run\_tests.sh}) includes fast sanity checks for the exact solver, the BSDEJ forward loop, the MADDPG environment step, and the execution-probability normalisation. Run before any long experiment.
+
+\chapter{Notation glossary}
+\label{app:notation}
+
+\begin{tabular}{@{}ll@{}}
+\toprule
+Symbol & Meaning \\ \midrule
+$W, (W_t)_{t \geq 0}$ & Standard $d$-dimensional Brownian motion \\
+$N, \tilde N$ & Poisson random measure and its compensation $\tilde N = N - \nu \diff t$ \\
+$X_t, q_t$ & Forward state; inventory component \\
+$Y_t, Z_t, U_t$ & BSDE value, Brownian adjoint, jump adjoint \\
+$f, g$ & BSDE generator; terminal condition \\
+$V(q)$ & Stationary value function of the CX model \\
+$\delta^a, \delta^b$ & Ask / bid half-spread (the control) \\
+$\lambda^a, \lambda^b$ & Base arrival intensities on ask / bid \\
+$\alpha$ & Flow sensitivity in execution probability \\
+$r$ & Discount rate \\
+$\phi$ & Inventory penalty coefficient \\
+$\psi(q) = \phi q^2$ & Running inventory cost \\
+$\Delta$ & Inventory tick size (fill quantum) \\
+$h^a(\mu), h^b(\mu)$ & Competitive factor on side $a, b$ \\
+$\Phi(\mu)$ & Finite-dimensional law embedding \\
+$N$ (also) & Number of agents in multi-agent setting \\
+$\mu_t, \mu^N_t$ & Population law; empirical version \\
+$J^{(i)}$ & Agent $i$'s expected-discounted-profit functional \\
+$\pi^{(i)}, Q^{(i)}$ & Actor policy; critic value function \\
+$\theta, \phi$ (RL) & Actor / critic parameters \\
+$\theta^-, \phi^-$ & Target-network parameters \\
+$\tau$ & Target-network update rate \\
+$\gamma$ (RL) & Discount factor \\ \bottomrule
+\end{tabular}
+
+\bigskip
+
+\noindent \emph{Note.} The symbol $\phi$ is overloaded in this dissertation: in the CX model it denotes the inventory-penalty coefficient; in the DDPG description it denotes the critic's parameter vector. The context unambiguously distinguishes them.

@@ -17,3 +17,8 @@ report/preprint/*.pdf
 # Local IDE / editor settings
 .vscode/
 .claude/settings.local.json
+
+# LaTeX auxiliary from dissertation_study
+*.toc
+*.fdb_latexmk
+*.fls

@@ -1,0 +1,297 @@
+\chapter{Deep BSDE Methods}
+\label{ch:deep-bsde}
+
+Chapter~\ref{ch:math} showed that the Cont--Xiong dealer market is a BSDEJ. That tells us \emph{what} to solve. This chapter tells us \emph{how}: the deep BSDE paradigm of Han, Jentzen and E \cite{han2018}, its extension to McKean--Vlasov couplings via fictitious play \cite{han2022}, the further extension to jump-driven forward dynamics, and --- critically --- the \emph{architectural conditions} under which these methods actually converge to the right answer rather than producing plausible-looking artefacts.
+
+\section{The deep BSDE paradigm}
+\label{sec:hje}
+
+\subsection{Core insight}
+
+A BSDE has a Markovian solution: when the forward $X$ is Markov and the generator $f$ and terminal $g$ depend on $(t, X_t)$ only, the solution $(Y_t, Z_t)$ has the form $Y_t = u(t, X_t)$, $Z_t = \sigma^\top \nabla u(t, X_t)$ for some function $u$ (Theorem~\ref{thm:fk}). If we parameterise $Z_t$ directly by a neural network, we can train it by backpropagation through the discretised BSDE dynamics.
+
+Han, Jentzen and E's idea is cleaner still: instead of learning $Y_t$ and $Z_t$ separately, \emph{learn $Y_0$ as a scalar parameter and $Z_t$ as a neural network}, then roll the BSDE \emph{forward} in time under the Euler scheme, and minimise the mean-squared difference between the rolled-out $Y_T$ and the known terminal $g(X_T)$.
+
+\begin{definition}[Deep BSDE (HJE 2018) \cite{han2018}]
+\label{def:hje}
+Given a discretisation $0 = t_0 < t_1 < \cdots < t_N = T$ with $\Delta t = T/N$, define the following learnable objects:
+\begin{itemize}
+  \item A scalar parameter $\theta_0 \in \R$ representing $Y_0$.
+  \item Neural networks $Z_\theta(t_k, x) : \R^n \to \R^d$, one per time step, with parameters $\theta$.
+\end{itemize}
+Simulate the forward trajectory via Euler--Maruyama:
+\begin{equation}
+  X_{t_{k+1}} = X_{t_k} + \mu(t_k, X_{t_k}) \Delta t + \sigma(t_k, X_{t_k}) \Delta W_k, \quad \Delta W_k \sim \mathcal{N}(0, \Delta t \, I_d).
+\end{equation}
+Roll $Y$ forward by inverting the BSDE Euler update:
+\begin{equation}
+  Y_{t_{k+1}} = Y_{t_k} - f(t_k, X_{t_k}, Y_{t_k}, Z_\theta(t_k, X_{t_k})) \Delta t + Z_\theta(t_k, X_{t_k})^\top \Delta W_k,
+  \label{eq:hje-roll}
+\end{equation}
+starting from $Y_{t_0} = \theta_0$. Minimise
+\begin{equation}
+  \mathcal{L}(\theta_0, \theta) = \E\bigl[(Y_{t_N} - g(X_{t_N}))^2\bigr]
+  \label{eq:hje-loss}
+\end{equation}
+by Adam / SGD on Monte Carlo samples of the forward path.
+\end{definition}
+
+\begin{intuition}
+The BSDE says that $(Y, Z)$ is the unique adapted pair making $Y$ hit $g(X_T)$ at terminal time. Equivalently: any \emph{other} guess for $(Y_0, Z(t, x))$ produces a rolled-out $Y_T$ that misses $g(X_T)$. So we can train by forcing the rolled-out $Y_T$ to match $g(X_T)$. The only constraint on $Z$ is that it be a function of the current state $X_{t_k}$; we parameterise with a neural network and let gradient descent discover the right function.
+
+A subtle but important point: the same $\theta_0$ is the prediction for \emph{every} sample path, because $Y_0$ is deterministic (it is $\E[g(X_T)]$ when $f \equiv 0$). The $Z$-networks carry all the path-dependent structure. This is why the loss \eqref{eq:hje-loss} has low variance: the only randomness in $Y_T - g(X_T)$ comes from the path; the prediction $Y_0$ is fixed.
+\end{intuition}
+
+\subsection{Convergence results}
+
+Beck, E, and Jentzen \cite{beck2019} established consistency: under Lipschitz $f, g$, as $N \to \infty$ (time discretisation refines) and network width $\to \infty$ (universal approximation holds), the learned $Y_0$ converges to the true $\E[g(X_T)]$ up to an error $O(1/\sqrt{\Delta t}) + O(\text{network error})$. Han and Long \cite{han2020} refined this and gave empirical evidence of convergence rates. These are existence theorems; in practice the architecture --- and not just the function class --- determines whether gradient descent finds a good solution.
+
+\subsection{The BatchNorm discovery}
+\label{subsec:batchnorm-discovery}
+
+A practical matter that is under-documented in the original HJE papers is the role of batch normalisation. In their TensorFlow 1.x reference implementation, Han, Jentzen and E wrap every hidden layer of $Z_\theta$ in a BatchNorm layer:
+\[
+  \mathrm{BN}(x) = \gamma \odot \frac{x - \E_{\text{batch}}[x]}{\sqrt{\Var_{\text{batch}}(x) + \varepsilon}} + \beta,
+\]
+with learnable scale $\gamma$ and shift $\beta$, per-feature. This is essential for convergence on the benchmark problems in \cite{han2018}: without BN the solver often fails to find the right $Y_0$ even on 100-dimensional linear BSDEs where closed forms exist.
+
+Why does BN help? At the start of training, the network weights are random; hidden activations can be wildly off-scale, and the BSDE update \eqref{eq:hje-roll} amplifies any scale mismatch multiplicatively with $\Delta W_k$. BN forces each hidden layer to have zero-mean unit-variance activations regardless of weight initialisation, stabilising the gradients. Without it, the solver is initialisation-fragile.
+
+\begin{intuition}
+BatchNorm is a \emph{conditioning} device for the optimisation landscape. In image classification its role is well-studied; in deep BSDE it plays essentially the same role, and the gradients it cleans up are those of the BSDE roll-out rather than a feed-forward pass. It is not a modelling choice --- it is a numerical-conditioning trick --- but without it the method typically fails on benchmarks where it is claimed to succeed. We will see in \S\ref{sec:arch-failure-modes} that this otherwise-benign trick has a catastrophic interaction with broadcast features in the mean-field setting.
+\end{intuition}
+
+\section{Extension to McKean--Vlasov FBSDEs}
+\label{sec:mv-fbsde}
+
+For the MV-BSDE of Section~\ref{sec:cx-model}, the generator depends on the law:
+\begin{equation}
+  -\diff Y_t = f(t, X_t, Y_t, Z_t, \mu_t) \diff t - Z_t \, \diff W_t, \qquad \mu_t = \Law(X_t).
+\end{equation}
+The direct Monte Carlo approach runs into a chicken-and-egg problem: we need $\mu_t$ to compute $Z_\theta$'s output, but $\mu_t$ is the law of $X_t$ which depends on the controls which depend on $Z_\theta$. Han, Hu and Long \cite{han2022} resolved this by \emph{fictitious play}.
+
+\subsection{The fictitious-play decomposition}
+
+\begin{definition}[Neural fictitious play for MV-FBSDEs]
+\label{def:neural-fp}
+Given an initial guess $\mu^{(0)}$ for the population law, iterate for $k = 1, 2, \ldots$:
+\begin{enumerate}[leftmargin=2em]
+  \item (BSDE inner loop.) Fix $\mu^{(k-1)}$ in the generator. Train $(Y_0^{(k)}, Z^{(k)}_\theta)$ via the HJE algorithm of Definition~\ref{def:hje} treating $\mu^{(k-1)}$ as a constant input.
+  \item (Empirical update.) Simulate $N$ forward trajectories under the learned controls; compute the empirical distribution $\mu^{(k)} = \frac{1}{N} \sum_{i=1}^{N} \delta_{X^{(i)}}$.
+  \item (Convergence check.) If $W_2(\mu^{(k)}, \mu^{(k-1)}) < \varepsilon$, stop. Otherwise repeat.
+\end{enumerate}
+\end{definition}
+
+\begin{theorem}[Han--Hu--Long \cite{han2022}, informal]
+\label{thm:fp-convergence}
+Under a monotonicity assumption on $f$ with respect to $\mu$ (in the sense that moving $\mu$ in the direction of the best response decreases a suitable Lyapunov functional), the fictitious-play iteration converges linearly in Wasserstein-$2$:
+\begin{equation}
+  W_2(\mu^{(k)}, \mu^*) \leq C \rho^k W_2(\mu^{(0)}, \mu^*),
+\end{equation}
+for some $\rho < 1$, where $\mu^*$ is the unique fixed point.
+\end{theorem}
+
+The monotonicity assumption is stringent in general (and fails in some MFG examples) but holds for the CX model with its logit-shaped execution probabilities: an increase in the population's quote tightness decreases a representative agent's fill rate in a monotone way, inducing monotonicity of the fixed-point map.
+
+\begin{intuition}
+Fictitious play is what economists call ``learning by assuming the population is as you left it last time''. If you solve the BSDE thinking the population is $\mu^{(k-1)}$, and then simulate to find the actual population is $\mu^{(k)}$, you update and retry. The monotonicity assumption says this iteration contracts; in practice we see convergence within $\sim 10$ outer iterations to tight tolerance.
+
+In the repo, the outer loop is in [\texttt{scripts/cont\_xiong\_exact.py}](../../scripts/cont_xiong_exact.py) and [\texttt{scripts/cont\_xiong\_pareto.py}](../../scripts/cont_xiong_pareto.py), with Wasserstein-style difference metric logged at each iteration (see the validation plot regenerated from committed data, \texttt{plots\_cx/regenerated/neural\_validation.png}).
+\end{intuition}
+
+\section{Extension to jump processes (BSDEJ solvers)}
+\label{sec:bsdej-solver}
+
+The HJE method was designed for Brownian-driven BSDEs. For our BSDEJ, we need a parameterisation of both $Z_t$ and the jump integrand $U_t(e)$. Several strategies are viable; we describe the two used in this repository.
+
+\subsection{Naive per-timestep BSDEJ solver}
+
+The most direct extension of HJE is to add one more network per time step for $U$.
+
+\begin{definition}[Deep BSDEJ --- per-timestep networks]
+\label{def:deep-bsdej-naive}
+For a BSDEJ with a two-point jump kernel $E = \{-\Delta, +\Delta\}$ (the CX case), define:
+\begin{itemize}
+  \item Scalar $\theta_0 = Y_0$.
+  \item Networks $Z_\theta^{(k)}(x)$ and $U_\theta^{a, (k)}(x)$, $U_\theta^{b, (k)}(x)$, one triple per time step.
+\end{itemize}
+Simulate the forward jump-diffusion (Poisson increments $\Delta N^{a,b}_k$ with rates $\lambda^s p^s(\delta^{s,*}_k)$). Roll $Y$ forward:
+\begin{equation}
+  Y_{k+1} = Y_k - f(t_k, X_k, Y_k, Z_k, U^a_k, U^b_k) \Delta t + Z_k \Delta W_k + U^a_k (\Delta N^a_k - \nu^a_k \Delta t) + U^b_k (\Delta N^b_k - \nu^b_k \Delta t),
+  \label{eq:bsdej-roll}
+\end{equation}
+where the $Z, U$ are evaluated at the network outputs. Minimise $\E[(Y_N - g(X_N))^2]$.
+\end{definition}
+
+This was the first BSDEJ variant implemented in [\texttt{solver\_cx\_bsdej.py}](../../solver_cx_bsdej.py). The disadvantage is that each time step gets its own independent networks, so the total parameter count scales linearly with $N$ (number of discretisation steps). For $N = 20$ steps with modest networks, this already blows up to millions of parameters on a problem whose underlying solution is a 1-D function $V(q)$.
+
+\subsection{Shared-weights + warm-start BSDEJ solver}
+
+A better architecture exploits the stationary structure of the (infinite-horizon or periodic) problem: the optimal $(V, U^a, U^b)$ does not depend on $t$. We share weights across time steps and initialise the networks from the output of the fictitious-play exact solver.
+
+\begin{definition}[BSDEJ with shared weights + warm start]
+\label{def:deep-bsdej-shared}
+Replace the per-step $Z_\theta^{(k)}, U_\theta^{s, (k)}$ of Definition~\ref{def:deep-bsdej-naive} with \emph{a single network each}:
+\[
+  Z_\theta(x), \quad U_\theta^a(x), \quad U_\theta^b(x).
+\]
+Initialise the weights so that the network outputs agree (to $\varepsilon$-precision) with the fictitious-play approximation of $V(q \pm \Delta) - V(q)$ at the grid points (this is the warm start). Run the HJE-style training loop with $(Y_0, \theta_{Z}, \theta_{U^a}, \theta_{U^b})$ as learnable parameters.
+\end{definition}
+
+The implementation is in [\texttt{solver\_cx\_bsdej\_shared.py}](../../solver_cx_bsdej_shared.py). On the stationary CX benchmark, this solver achieves a spread error of $2.6\%$ against the exact Algorithm~1, versus $>10\%$ without the warm start (see the key results table in the main README).
+
+\begin{intuition}
+The warm-start trick is essential in practice. Starting from random weights, the BSDEJ loss landscape has many plateaus and the gradient is dominated by the jump compensator noise. Starting from the exact solution's values means the gradient signal can immediately detect and correct small discrepancies rather than having to discover the basin from scratch. In this sense the neural solver is doing a \emph{continuous refinement} of the discrete tabular solver, not a from-scratch optimisation.
+
+The shared-weights choice is defensible for the stationary problem because the true solution is time-homogeneous. For a genuinely time-inhomogeneous problem (horizon-dependent $\psi$, terminal liquidation, etc.) per-step networks recover flexibility.
+\end{intuition}
+
+\subsection{Compensated martingale ablation}
+
+A subtle implementation detail worth flagging: the roll-out \eqref{eq:bsdej-roll} must use \emph{compensated} increments $\Delta N^s_k - \nu^s_k \Delta t$. Using the raw jump counts $\Delta N^s_k$ instead introduces a systematic bias equal to the mean jump compensator, which compounds over $N$ steps to produce catastrophic errors. The [\texttt{scripts/compensated\_martingale\_ablation.py}](../../scripts/compensated_martingale_ablation.py) script shows: with raw jumps, error is $264\%$; with compensation, $2.7\%$. This is the Wang et al.\ (2023) \cite{wang2023} fix for jump-BSDEs and reflects a more subtle point about the BSDEJ roll-out than most practitioners appreciate. The theoretical reason is that the BSDEJ martingale part is driven by the \emph{compensated} measure $\tilde N$, not $N$; using raw counts corresponds to a different equation with a nonzero drift in the martingale direction.
+
+\section{Architectural failure modes of MV deep BSDE solvers}
+\label{sec:arch-failure-modes}
+
+This section presents the diagnostic findings from \cite{garry2026preprint2} in full, with derivations and numerical evidence. These are the ``three failure modes'' that silently suppress mean-field signals in deep BSDE architectures; each is sufficient on its own to produce a ``no mean-field effect'' non-result when in fact the effect is present but architecturally invisible.
+
+\subsection{Mean-field conditioning}
+
+Recall from \S\ref{sec:mf-limit} that the mean-field generator depends on the law $\mu_t$ through a competitive factor $h^a(\mu_t)$. To feed $\mu_t$ into a neural network, we need a finite-dimensional encoding $\Phi(\mu_t) \in \R^d$. Four encoders are implemented in the repo ([\texttt{equations/law\_encoders.py}](../../equations/law_encoders.py)):
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Encoder & Features & Dimension \\ \midrule
+Moments & $\E[q], \Var[q], \text{Skew}[q], \E|q|, \max |q|, \sigma_q$ & 6 \\
+Quantiles & $\E[q]$ plus 5 quantiles $Q_{0.1, 0.25, 0.5, 0.75, 0.9}$ & 6 \\
+Histogram & soft Gaussian bins on $[-q_{\max}, q_{\max}]$ & 20 \\
+DeepSets & $\rho\bigl(\frac{1}{N} \sum_i \psi(x_i)\bigr)$, $\psi$ and $\rho$ learned & 16 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+Each encoder's output $\Phi(\mu_t)$ is fed into (i) a \emph{competitive factor network} $h_\theta(\Phi) \in (0, 1]$ that appears in the generator, and (ii) the subnet that produces $Z_\theta$, as a per-particle input concatenated with $X_t$. In the broken pre-fix implementation, one of the two paths was severed or degraded. Three independent failures follow.
+
+\subsection{Failure 1: generator bypass}
+
+The first failure is an implementation bug, cleanly separable from architectural issues. The MV class inherited $f_{\text{tf}}$ --- the BSDE generator --- from its non-MV parent. The parent's generator used a scalar \emph{moment proxy} $\hat h(t, \bar q_t, \bar \delta_t)$ based on first-order statistics, not the full law embedding $\Phi(\mu_t)$. As a result, the BSDE dynamics \eqref{eq:hje-roll} did not depend on $\Phi(\mu_t)$ --- only on the moment proxy.
+
+Consequence: the gradient of the loss $\mathcal{L}$ with respect to the law-encoder parameters is
+\begin{equation}
+  \frac{\partial \mathcal{L}}{\partial \theta_\Phi} = \frac{\partial \mathcal{L}}{\partial Y_T} \cdot \frac{\partial Y_T}{\partial \Phi} \cdot \frac{\partial \Phi}{\partial \theta_\Phi}.
+\end{equation}
+If the BSDE roll-out does not depend on $\Phi$, then $\partial Y_T / \partial \Phi = 0$ and no gradient flows back. The law encoder is trained to do \emph{nothing} and converges to a trivial output.
+
+The fix, implemented in [\texttt{equations/contxiong\_lob\_mv.py}](../../equations/contxiong_lob_mv.py) lines 23--124, overrides $f_{\text{tf}}$ in the MV class to use the law-embedding-based competitive factor network $h(\Phi)$ directly in execution probabilities. This reconnects the gradient path from the loss back to the encoder.
+
+\subsection{Failure 2: BatchNorm erasure of broadcast features}
+\label{subsec:batchnorm-erasure}
+
+After fixing Failure 1, we found that the law embedding was \emph{still} being ignored. Reason: at a given time step, $\Phi(\mu_t)$ is computed once from the empirical population and \emph{broadcast to all $N$ particles in the batch}, because every particle in the population sees the same $\mu_t$. This produces the following structure in the batch input to the subnet:
+\begin{equation}
+  \text{batch input} = \bigl[\underbrace{(X^{(1)}, \Phi(\mu_t))}_{\text{particle 1}}, \underbrace{(X^{(2)}, \Phi(\mu_t))}_{\text{particle 2}}, \ldots, \underbrace{(X^{(N)}, \Phi(\mu_t))}_{\text{particle }N}\bigr].
+\end{equation}
+The $X$-coordinates vary across the batch (every particle has its own state). The $\Phi$-coordinates are \emph{identical} across the batch (the law is the same object broadcast to everyone).
+
+BatchNorm (§\ref{subsec:batchnorm-discovery}) computes per-feature statistics across the batch dimension:
+\[
+  \mathrm{BN}(x)_j = \gamma_j \frac{x_j - \bar x_j}{\sqrt{\text{Var}_j + \varepsilon}} + \beta_j.
+\]
+For the $\Phi$-coordinates, $x_j$ is constant across the batch, so $\bar x_j = x_j$ and $\text{Var}_j = 0$. The numerator is identically zero; the output is $\beta_j$ (a learnable constant). \textbf{BatchNorm has annihilated the law embedding.} Worse, this erasure propagates through every downstream BatchNorm layer: the residual $x_j - \bar x_j$ stays zero no matter how the layers transform $x_j$.
+
+\begin{proposition}[BN erasure of broadcast features]
+\label{prop:bn-erasure}
+Let $\ell$ be a feedforward composition of BatchNorm + affine + nonlinearity layers applied to a batch input in which the $j$-th feature is constant across the batch. Then the $j$-th feature's contribution to the output is constant across the batch at every layer (and identically zero up to $\beta$-shifts after the first BN).
+\end{proposition}
+
+\begin{proof}[Proof]
+At the input BN, the $j$-th coordinate has $\text{Var}_j = 0$; the normalised output is $\beta_j$ (a batch-constant). Linearly combining a batch-constant with the (varying) other features produces a batch-constant contribution on the $j$-th axis. Applying the next nonlinearity and BN, the $j$-th contribution remains batch-constant because BN's mean subtraction on a batch-constant gives zero. Iterate.
+\end{proof}
+
+\begin{intuition}
+A BatchNorm layer is ``noise-seeking'': it keeps only cross-batch variance. Features that are broadcast (and hence have zero cross-batch variance by construction) are thrown away. The law embedding $\Phi(\mu_t)$ is exactly such a feature. This is the central diagnostic finding of the preprint: mean-field BSDE solvers using standard BN-heavy architectures (as recommended by HJE for their conditioning benefits) are \emph{structurally incompatible} with broadcast law features.
+\end{intuition}
+
+The fix, in [\texttt{solver.py}](../../solver.py) lines 31--82 (\texttt{MeanFieldSubNet}), is a \emph{two-stream architecture}: split the input into a state stream (with BN for conditioning) and a law stream (without BN), process separately, and combine only at the output. Explicitly, let $\text{BN}$ denote BatchNorm and $\mathrm{MLP}_\phi$ a batch-normalised MLP:
+\begin{align}
+  h_{\text{state}} &= \mathrm{MLP}_\phi(\text{BN}(X)), \\
+  h_{\text{law}} &= \mathrm{MLP}(\Phi) \quad \text{(no BN)}, \\
+  Z_\theta(X, \Phi) &= h_{\text{state}} + h_{\text{law}}.
+\end{align}
+The state stream retains the conditioning benefit of BN; the law stream passes through unaffected. The additive combination is one choice; FiLM conditioning (below) is an alternative that allows richer state--law interactions.
+
+\subsection{Failure 3: representation collapse under DeepSets + symmetric inputs}
+\label{subsec:deepsets-collapse}
+
+Even with Failure 1 and 2 fixed, one encoder --- DeepSets --- systematically under-performs. We analyse the cause.
+
+The DeepSets encoder is
+\begin{equation}
+  \Phi(\mu) = \rho\!\left(\frac{1}{N} \sum_{i=1}^{N} \psi(x_i)\right),
+  \label{eq:deepsets}
+\end{equation}
+where $\psi : \R \to \R^d$ and $\rho : \R^d \to \R^{d_{\text{embed}}}$ are MLPs. Zaheer et al.\ \cite{zaheer2017} proved that every permutation-invariant function of a multiset of bounded size is of the form \eqref{eq:deepsets}. This is a universal approximation result: DeepSets \emph{can} represent any law-invariant summary, including variance.
+
+However, universal approximation is a statement about the function class, not about whether gradient descent finds the right member starting from a random initialisation. At initialisation, $\psi$ is a random MLP. For a symmetric input distribution (say, zero-mean $q$), the per-particle outputs $\psi(q_i)$ are approximately symmetric around the origin. The \emph{mean pooling} $\frac{1}{N} \sum_i \psi(q_i)$ then produces positive and negative contributions that \emph{cancel}. The resulting pooled vector is near-zero, and $\rho$'s input has near-zero cross-population variance --- so the DeepSets encoder cannot distinguish populations with different spreads.
+
+\begin{proposition}[DeepSets symmetric-cancellation]
+\label{prop:deepsets-collapse}
+Let $\psi$ be a random ReLU MLP with symmetric weight initialisation (e.g.\ Kaiming uniform). Let $\mu_1, \mu_2$ be two zero-mean symmetric distributions on $\R$ with different variances. Then $\E_\psi[\|\Phi(\mu_1) - \Phi(\mu_2)\|^2] = O(1/N)$ in the Monte Carlo sample size $N$.
+\end{proposition}
+
+\begin{proof}[Proof idea]
+Write $\psi(q) = \psi_{\text{even}}(q) + \psi_{\text{odd}}(q)$ where $\psi_{\text{even}}, \psi_{\text{odd}}$ are the symmetric/antisymmetric parts under $q \mapsto -q$. For random symmetric initialisation, the induced decomposition has zero mean in the odd part averaged over symmetric inputs. The mean pooling $\frac{1}{N} \sum_i \psi(q_i)$ restricted to the odd part concentrates around zero by the law of large numbers, regardless of the variance of $\mu$. Hence $\Phi(\mu_1)$ and $\Phi(\mu_2)$ differ only in the even part's response, which is identical if $\mu_1, \mu_2$ share their even moments. For zero-mean symmetric distributions this means the first deviation is the variance, which the pooling collapses to the expectation of an even $\psi_{\text{even}}$ --- a single scalar that tends to be the same for any reasonable $\mu$.
+\end{proof}
+
+Empirically (preprint \cite{garry2026preprint2}, Table 2), for $\mu_1$ with $\sigma = 0.1$ and $\mu_2$ with $\sigma = 5.0$:
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Encoder & $\|\Phi(\mu_1) - \Phi(\mu_2)\|$ & $\text{cos}(\Phi(\mu_1), \Phi(\mu_2))$ \\ \midrule
+DeepSets & $0.003$ & $\mathbf{1.000}$ \\
+Quantiles & $9.84$ & varies \\
+Moments & $\mathbf{24.98}$ & varies \\ \bottomrule
+\end{tabular}
+\end{table}
+
+DeepSets sees two populations with $50\times$ variance difference as \emph{essentially identical}. Moments and quantiles, which explicitly compute variance-sensitive features, do not suffer this failure.
+
+\begin{intuition}
+Universal approximation guarantees the existence of a DeepSets embedding that correctly discriminates by variance --- one would need $\psi(q) \approx (q, q^2)$ and $\rho$ to compute $\mu_2 - \mu^2$. But training does not find this $\psi$ in practice: the gradient signal is symmetric around the starting point, and symmetry preserves itself under gradient descent. The lesson generalises: for mean-field problems, prefer \emph{explicit variance features} over learned pooling. It is faster and more robust.
+\end{intuition}
+
+\subsection{Corrected architecture: putting the fixes together}
+
+After the three fixes --- (1) connect $f$ to $\Phi$, (2) two-stream subnet, (3) Moments or Quantiles encoder --- the solver recovers measurable mean-field effects. The key empirical results, reproduced from the preprint and confirmed in \texttt{archive/FINDINGS.md}:
+
+\begin{itemize}[leftmargin=2em]
+  \item The learned competitive factor $h(\Phi(\mu))$ varies by $4\times$ across population shapes: $h = 0.442$ for a narrow population ($\sigma = 0.1$), $h = 0.109$ for a wide population ($\sigma = 5.0$).
+  \item Optimal ask quotes at $q = 0$ shift from $\delta_a = 0.696$ (narrow) to $\delta_a = 0.334$ (wide) --- a $2\times$ change.
+  \item Quote skew $\delta_a - \delta_b$ flips sign between narrow and wide populations at $q = 2$ (long inventory): slightly positive for narrow, sharply negative for wide.
+\end{itemize}
+
+These effects were \emph{always present} in the mathematics; the earlier ``no effect'' results were artefacts of the architecture's inability to propagate the signal. The diagnostic contribution is clean: the failure modes are easy to identify a priori once you know what to look for, and fixable with minor architecture changes.
+
+\subsection{FiLM conditioning as an alternative}
+
+An alternative to the additive two-stream is \emph{FiLM} (Feature-wise Linear Modulation, Perez et al.\ \cite{perez2018}), which modulates the state stream multiplicatively by the law embedding:
+\begin{align}
+  (\gamma(\Phi), \beta(\Phi)) &= \mathrm{MLP}_\phi(\Phi), \\
+  h_{\text{state}} &= \mathrm{MLP}_{\text{pre}}(\text{BN}(X)), \\
+  h_{\text{modulated}} &= \gamma(\Phi) \odot h_{\text{state}} + \beta(\Phi), \\
+  Z_\theta(X, \Phi) &= \mathrm{MLP}_{\text{post}}(h_{\text{modulated}}).
+\end{align}
+The difference between FiLM and additive is whether the law can \emph{modulate} or merely \emph{shift} the state response. FiLM allows non-trivial interaction $\partial^2 Z / (\partial X \cdot \partial \Phi) \neq 0$, which the additive form cannot express. For the CX problem, empirically both work and perform comparably; FiLM is marginally better on high-$\phi$ regimes where the quote-inventory interaction is steep.
+
+\section{Summary}
+
+We now have a complete numerical methodology:
+\begin{itemize}[leftmargin=2em]
+  \item Deep BSDE (HJE): learn $Y_0$ scalar + $Z_t$ network, minimise terminal mismatch.
+  \item Extensions to MV couplings (fictitious play, Theorem~\ref{thm:fp-convergence}) and jumps (BSDEJ with $U$-networks).
+  \item Three architectural failure modes: generator bypass, BN erasure, DeepSets collapse. All fixable.
+\end{itemize}
+
+The next two chapters apply this machinery. Chapter~\ref{ch:bellman} uses it for the neural Bellman validation and Q-scaling experiments. Chapter~\ref{ch:nash} extends to the decentralised multi-agent setting and uncovers tacit collusion.

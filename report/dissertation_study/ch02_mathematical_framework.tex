@@ -1,0 +1,513 @@
+\chapter{Mathematical Framework}
+\label{ch:math}
+
+This chapter develops the mathematical machinery that every subsequent chapter relies on: stochastic calculus with jumps, backward stochastic differential equations (BSDEs and BSDEJs), the nonlinear Feynman--Kac correspondence between BSDEs and semilinear PDEs, mean-field games and the McKean--Vlasov formulation, and finally the Cont--Xiong dealer market model whose reformulation as a BSDEJ justifies everything we do afterwards.
+
+The style is explanatory: every non-trivial theorem is preceded by a motivating paragraph and followed by consequences or caveats. Derivations are spelled out step by step; where a clever manipulation appears, the paragraph before the equation explains what we are about to do and why.
+
+\section{Probability-space prerequisites}
+\label{sec:prereqs}
+
+We fix a filtered probability space $(\Omega, \mathcal{F}, \filt, \Prob)$ on which all our stochastic processes live. The filtration $\filt$ represents the information available at time $t$; it is \emph{right-continuous} ($\mathcal{F}_t = \bigcap_{s > t} \mathcal{F}_s$) and \emph{complete} ($\mathcal{F}_0$ contains all $\Prob$-null sets of $\mathcal{F}$). These technical conditions --- together known as the \emph{usual conditions} --- are what make It\^o calculus work without pathologies.
+
+A $d$-dimensional \emph{standard Brownian motion} $W = (W_t)_{t \geq 0}$ is a process with the three defining properties:
+\begin{enumerate}[leftmargin=2em]
+  \item $W_0 = 0$ almost surely.
+  \item For $0 \leq s < t$ the increment $W_t - W_s$ is $\mathcal{N}(0, (t-s) I_d)$-distributed and independent of $\mathcal{F}_s$.
+  \item The paths $t \mapsto W_t$ are continuous almost surely.
+\end{enumerate}
+The It\^o integral $\int_0^t H_s \, \diff W_s$ is defined for adapted, square-integrable integrands $H$ by first defining it on simple processes and extending by $L^2$-isometry (Karatzas--Shreve \cite{karatzas1991}, Ch.~3). The key facts we will use repeatedly are:
+\begin{itemize}[leftmargin=2em]
+  \item It\^o integrals are martingales: $\E\bigl[\int_0^t H_s \diff W_s \bigm| \mathcal{F}_u\bigr] = \int_0^u H_s \diff W_s$ for $u < t$.
+  \item The It\^o isometry: $\E\bigl[(\int_0^t H_s \diff W_s)^2\bigr] = \int_0^t \E[H_s^2]\,\diff s$.
+  \item The quadratic-variation identity: $(\diff W_t)^2 = \diff t$ in the sense of the It\^o multiplication table $(\diff t)^2 = \diff t \, \diff W_t = 0$, $(\diff W_t)^2 = \diff t$.
+\end{itemize}
+
+A \emph{Poisson random measure} $N$ on $[0,T] \times E$ with intensity measure $\nu(\diff e)\,\diff t$ is defined by: for disjoint Borel sets $A \subset E$ and time intervals $[s, t]$, $N([s, t], A)$ is Poisson-distributed with mean $(t - s)\nu(A)$, and counts over disjoint regions are independent. The \emph{compensated} random measure $\tilde N(\diff t, \diff e) := N(\diff t, \diff e) - \nu(\diff e)\,\diff t$ is a martingale measure: for $\phi : E \to \R$ with $\int_E \phi^2 \, \diff \nu < \infty$, the stochastic integral
+\begin{equation}
+  M_t := \int_0^t \int_E \phi(e)\,\tilde N(\diff s, \diff e)
+\end{equation}
+is a martingale with quadratic variation $\langle M \rangle_t = t \int_E \phi^2 \, \diff \nu$.
+
+\begin{intuition}
+Think of $N$ as a rain of random dots on the $(t, e)$ plane with density $\nu(\diff e)\,\diff t$. The integral $\int \phi(e) \, N(\diff t, \diff e)$ is the sum of $\phi$ evaluated at each dot. Compensation subtracts the expected rate so the result is mean-zero. In our dealer market, the ``dots'' will be execution events, with mark $e = \pm 1$ indicating which side filled.
+\end{intuition}
+
+\section{Forward SDEs and jump-diffusions}
+\label{sec:sde-review}
+
+A \emph{jump-diffusion} is a process $X = (X_t)_{t \geq 0}$ satisfying
+\begin{equation}
+  \diff X_t = \mu(t, X_t) \, \diff t + \sigma(t, X_t) \, \diff W_t + \int_E \gamma(t, X_{t-}, e) \, \tilde N(\diff t, \diff e),
+  \label{eq:jump-diffusion}
+\end{equation}
+with initial condition $X_0 = x_0 \in \R^n$. The coefficients $\mu : [0, T] \times \R^n \to \R^n$, $\sigma : [0, T] \times \R^n \to \R^{n \times d}$, $\gamma : [0, T] \times \R^n \times E \to \R^n$ are measurable. The notation $X_{t-}$ denotes the left limit, reflecting that the jump coefficient is evaluated \emph{just before} the jump event.
+
+Under Lipschitz conditions on $\mu, \sigma, \gamma$ (uniform in $t, e$; for $\gamma$, $L^2(\nu)$-Lipschitz), Equation~\eqref{eq:jump-diffusion} admits a unique c\`adl\`ag adapted solution with $\E[\sup_{t \leq T} \|X_t\|^2] < \infty$ (Applebaum \cite{applebaum2009}, Ch.~6).
+
+\subsection{It\^o's formula for jump-diffusions}
+
+The workhorse of all subsequent derivations is the generalisation of It\^o's formula to jump-diffusions. Let $f \in C^{1,2}([0, T] \times \R^n)$ --- once continuously differentiable in $t$ and twice in $x$. Along the trajectory $X_t$,
+\begin{align}
+  \diff f(t, X_t) &= \partial_t f \, \diff t \;+\; \nabla f^\top \mu \, \diff t + \nabla f^\top \sigma \, \diff W_t \;+\; \tfrac{1}{2} \Tr\bigl(\sigma \sigma^\top \nabla^2 f\bigr) \, \diff t \nonumber \\
+  &\quad + \int_E \bigl[f(t, X_{t-} + \gamma(t, X_{t-}, e)) - f(t, X_{t-})\bigr] \tilde N(\diff t, \diff e) \nonumber \\
+  &\quad + \int_E \bigl[f(t, X_{t-} + \gamma) - f(t, X_{t-}) - \gamma^\top \nabla f\bigr] \nu(\diff e) \, \diff t,
+  \label{eq:jump-ito}
+\end{align}
+where all derivatives of $f$ are evaluated at $(t, X_{t-})$. Three structural remarks deserve emphasis:
+
+\begin{enumerate}[leftmargin=2em]
+  \item The \emph{continuous part} of $\diff f$ consists of the drift $\mu^\top \nabla f$, the diffusion martingale $\sigma^\top \nabla f \, \diff W_t$, and the It\^o correction $\tfrac{1}{2} \Tr(\sigma \sigma^\top \nabla^2 f) \, \diff t$. Without jumps, this is the classical It\^o formula.
+  \item The \emph{jump martingale part} $\int_E [f(t, X_{t-} + \gamma) - f(t, X_{t-})] \tilde N(\diff t, \diff e)$ accumulates the value changes at each jump, compensated by the intensity.
+  \item The \emph{compensator drift} $\int_E [f(\cdot + \gamma) - f - \gamma^\top \nabla f] \, \nu(\diff e) \, \diff t$ is the difference between the true post-jump value of $f$ and its first-order (linear) approximation. This is what makes the jump martingale term have zero mean; without it we would double-count.
+\end{enumerate}
+
+\begin{intuition}
+For a diffusion, the It\^o correction $\tfrac{1}{2} f'' \sigma^2 \, \diff t$ arises because $(\diff W)^2 = \diff t$: the second-order Taylor term does not vanish in the small-time limit. For jumps, the story is different. Jumps are $O(1)$ in size, not infinitesimal, so Taylor expansion would be wrong. Instead we evaluate $f$ at the post-jump state and subtract off the pre-jump value directly; the compensator drift is the deterministic piece that makes the martingale part genuinely mean-zero.
+\end{intuition}
+
+\section{Backward stochastic differential equations}
+\label{sec:bsde}
+
+\subsection{Motivation: going backward with randomness}
+
+Suppose you know a random terminal value $\xi = g(X_T)$ and you want to compute its value ``now''. In a deterministic world you would just solve an ODE backwards. In a stochastic world the naive backward ODE is ill-posed: the solution at time $t$ has to be $\Ft$-measurable (adapted to the information available at time $t$), yet the terminal condition involves future randomness. Running a deterministic ODE backwards from $g(X_T)$ would produce a value that depends on information from the future --- a violation of adaptedness.
+
+Pardoux and Peng (1990) \cite{pardoux1990} resolved this by introducing a second, compensating process. A BSDE is a pair $(Y, Z)$ of adapted processes satisfying
+\begin{equation}
+  Y_t = g(X_T) + \int_t^T f(s, X_s, Y_s, Z_s) \, \diff s - \int_t^T Z_s \, \diff W_s,
+  \label{eq:bsde-integral}
+\end{equation}
+or, in differential form,
+\begin{equation}
+  -\diff Y_t = f(t, X_t, Y_t, Z_t) \, \diff t - Z_t \, \diff W_t, \qquad Y_T = g(X_T).
+  \label{eq:bsde-differential}
+\end{equation}
+Here $f : [0, T] \times \R^n \times \R \times \R^d \to \R$ is the \emph{generator} (or driver), and $g : \R^n \to \R$ is the \emph{terminal condition}. $Y$ is scalar-valued, $Z$ is $d$-dimensional (matching the Brownian motion $W$).
+
+The key insight is that the extra process $Z_t$ absorbs the randomness that would otherwise violate adaptedness: if we subtract $\int_t^T Z_s \, \diff W_s$ from the backward integral, we get an adapted process on the left. The next proposition makes this precise.
+
+\subsection{Martingale representation: where $Z$ comes from}
+
+\begin{theorem}[Martingale representation in the Brownian filtration]
+\label{thm:martingale-rep}
+Let $\filt$ be the filtration generated by $W$, completed by $\Prob$-null sets. For every square-integrable random variable $\xi \in L^2(\Omega, \mathcal{F}_T, \Prob)$, there exists a unique (up to $\diff t \otimes \diff \Prob$-null sets) adapted process $Z = (Z_t)_{t \in [0, T]}$ with $\E\int_0^T \|Z_s\|^2 \, \diff s < \infty$ such that
+\begin{equation}
+  \xi = \E[\xi] + \int_0^T Z_s \, \diff W_s.
+  \label{eq:mrt}
+\end{equation}
+Consequently, the martingale $M_t := \E[\xi \mid \Ft]$ is a stochastic integral:
+\begin{equation}
+  M_t = \E[\xi] + \int_0^t Z_s \, \diff W_s.
+\end{equation}
+\end{theorem}
+
+\begin{intuition}
+Every square-integrable $\Ft$-measurable random variable can be written as its expectation plus an It\^o integral of some adapted $Z$. In other words, in the Brownian filtration \emph{all martingales are stochastic integrals}. This is what makes BSDEs well-posed: given $g(X_T)$, the process $Z$ in \eqref{eq:bsde-integral} is forced on us by the theorem.
+\end{intuition}
+
+\begin{proof}[Proof idea]
+Polynomials in $W_{t_1}, \ldots, W_{t_k}$ are dense in $L^2(\Omega, \mathcal{F}_T, \Prob)$, and for each such polynomial the representation can be written explicitly (by iterated It\^o integrals). The claim follows by a density argument. See Karatzas--Shreve \cite{karatzas1991} Thm.~3.4.15 or El Karoui et al.\ \cite{elkaroui1997} \S2.
+\end{proof}
+
+\subsection{Existence and uniqueness: Pardoux--Peng}
+
+The price we pay for the backward structure is non-linearity: the generator $f$ in \eqref{eq:bsde-integral} depends on $(Y_s, Z_s)$ in general. Nevertheless, under Lipschitz conditions the BSDE admits a unique solution.
+
+\begin{assumption}[Standard Lipschitz]
+\label{ass:lipschitz}
+The generator $f : [0, T] \times \R^n \times \R \times \R^d \to \R$ is measurable, and there exists $K > 0$ such that for all $t, x, y_1, y_2, z_1, z_2$,
+\begin{equation}
+  |f(t, x, y_1, z_1) - f(t, x, y_2, z_2)| \leq K\bigl(|y_1 - y_2| + \|z_1 - z_2\|\bigr).
+\end{equation}
+Moreover $\E\int_0^T |f(t, X_t, 0, 0)|^2 \, \diff t < \infty$ and $\E[g(X_T)^2] < \infty$.
+\end{assumption}
+
+\begin{theorem}[Pardoux--Peng \cite{pardoux1990}]
+\label{thm:pardoux-peng}
+Under Assumption~\ref{ass:lipschitz}, the BSDE \eqref{eq:bsde-integral} admits a unique pair $(Y, Z)$ of adapted processes with
+\begin{equation}
+  \E\Bigl[\sup_{t \in [0, T]} |Y_t|^2\Bigr] + \E\int_0^T \|Z_s\|^2 \, \diff s < \infty.
+\end{equation}
+\end{theorem}
+
+\begin{proof}[Proof sketch (fixed-point argument)]
+The proof is a Banach fixed-point argument in the space $\mathcal{H}^2$ of pairs $(Y, Z)$ with finite norm
+\[
+  \|(Y, Z)\|_\beta^2 := \E\int_0^T e^{\beta t}\bigl(|Y_t|^2 + \|Z_t\|^2\bigr) \, \diff t,
+\]
+for a parameter $\beta > 0$ chosen large enough to make the map below contractive.
+
+\textbf{Step 1: Defining the map.}
+Given $(y, z) \in \mathcal{H}^2$, define $\xi := g(X_T) + \int_0^T f(s, X_s, y_s, z_s) \, \diff s$. By the Lipschitz + growth assumptions, $\xi \in L^2$. Apply the martingale representation theorem to obtain adapted $\tilde Z$ with
+\[
+  \E[\xi \mid \Ft] = \E[\xi] + \int_0^t \tilde Z_s \, \diff W_s.
+\]
+Now set
+\begin{align}
+  Y_t &:= \E[\xi \mid \Ft] - \int_0^t f(s, X_s, y_s, z_s) \, \diff s, \\
+  Z_t &:= \tilde Z_t.
+\end{align}
+One checks $Y_T = g(X_T)$ and that $(Y, Z)$ satisfies the BSDE \eqref{eq:bsde-integral} with generator frozen at $(y, z)$. The map $(y, z) \mapsto (Y, Z)$ is denoted $\Theta$.
+
+\textbf{Step 2: $\Theta$ is a contraction for $\beta$ large.}
+Take two inputs $(y_1, z_1), (y_2, z_2)$ with outputs $(Y_1, Z_1), (Y_2, Z_2)$. Using It\^o's formula applied to $(Y_1 - Y_2)^2 e^{\beta t}$, integrating from $0$ to $T$, taking expectations, and using the Lipschitz bound on $f$, one arrives at an estimate
+\[
+  \|(Y_1 - Y_2, Z_1 - Z_2)\|_\beta^2 \leq \frac{C(K)}{\beta} \|(y_1 - y_2, z_1 - z_2)\|_\beta^2,
+\]
+for a constant $C(K)$ depending only on the Lipschitz constant. Choosing $\beta > C(K)$ makes $\Theta$ a strict contraction.
+
+\textbf{Step 3: Banach fixed point.}
+By Banach's fixed-point theorem, $\Theta$ has a unique fixed point $(Y, Z) \in \mathcal{H}^2$. This is the desired solution. Uniqueness is inherited from the fixed-point uniqueness. The $L^2$-bound on $\sup_t |Y_t|$ follows from Doob's inequality applied to the martingale $\E[\xi \mid \Ft] - \E[\xi]$.
+\end{proof}
+
+\begin{remark}[Non-Lipschitz extensions]
+The Lipschitz assumption can be relaxed. Kobylanski (2000) \cite{kobylanski2000} covered quadratic-in-$z$ generators via exponential transforms. Briand and Hu (2006) \cite{briand2006} handled unbounded terminal conditions. For this dissertation, all generators are Lipschitz on the bounded quote region (enforced via explicit clamping in code), so Pardoux--Peng suffices.
+\end{remark}
+
+\subsection{A linear example and its Feynman--Kac interpretation}
+\label{subsec:linear-bsde}
+
+When the generator is linear in $(Y, Z)$, the BSDE reduces to a conditional expectation. Concretely, take $f(t, X_t, y, z) = -r y$ (just discounting) and $g(X_T)$ arbitrary. The BSDE becomes
+\begin{equation}
+  -\diff Y_t = -r Y_t \, \diff t - Z_t \, \diff W_t, \qquad Y_T = g(X_T).
+\end{equation}
+Define the discounted process $\tilde Y_t := e^{-r t} Y_t$. By It\^o,
+\begin{equation}
+  \diff \tilde Y_t = -r e^{-r t} Y_t \, \diff t + e^{-r t} \diff Y_t = e^{-r t} Z_t \, \diff W_t,
+\end{equation}
+so $\tilde Y$ is a martingale. Hence $\tilde Y_t = \E[\tilde Y_T \mid \Ft] = e^{-r T} \E[g(X_T) \mid \Ft]$, and we recover the classical Feynman--Kac formula:
+\begin{equation}
+  Y_t = e^{-r (T - t)} \E[g(X_T) \mid \Ft] = e^{-r(T-t)}\,u(t, X_t),
+\end{equation}
+where $u(t, x) := \E[g(X_T) \mid X_t = x]$ is the classical solution of the linear PDE $\partial_t u + \mathcal{L} u - r u = 0$ with terminal $u(T, x) = g(x)$ (here $\mathcal{L}$ is the infinitesimal generator of $X$).
+
+This identification generalises: the nonlinear BSDE \eqref{eq:bsde-integral} corresponds to a nonlinear PDE --- the generalised (nonlinear) Feynman--Kac theorem, which we prove next.
+
+\section{Nonlinear Feynman--Kac}
+\label{sec:fk}
+
+\begin{theorem}[Nonlinear Feynman--Kac, Markovian case]
+\label{thm:fk}
+Suppose $X$ is a jump-diffusion \eqref{eq:jump-diffusion} with infinitesimal generator $\mathcal{L}$, the functions $\mu, \sigma, \gamma, f, g$ are sufficiently regular, and $u \in C^{1,2}([0, T] \times \R^n)$ satisfies the semilinear PIDE
+\begin{equation}
+  \partial_t u + \mathcal{L} u + f\bigl(t, x, u, \sigma^\top \nabla u, \mathcal{J} u\bigr) = 0, \qquad u(T, x) = g(x),
+  \label{eq:pide}
+\end{equation}
+where
+\[
+  \mathcal{L} u = \mu^\top \nabla u + \tfrac{1}{2} \Tr(\sigma \sigma^\top \nabla^2 u) + \int_E \bigl[u(t, x + \gamma) - u(t, x) - \gamma^\top \nabla u\bigr] \nu(\diff e),
+\]
+and $\mathcal{J} u(t, x, e) := u(t, x + \gamma(t, x, e)) - u(t, x)$ is the jump operator. Then
+\begin{equation}
+  Y_t = u(t, X_t), \qquad Z_t = \sigma(t, X_t)^\top \nabla u(t, X_t), \qquad U_t(e) = \mathcal{J} u(t, X_{t-}, e)
+  \label{eq:fk-identification}
+\end{equation}
+solve the BSDEJ with generator $f$ and terminal $g$.
+\end{theorem}
+
+\begin{proof}
+Apply It\^o's formula \eqref{eq:jump-ito} to $u(t, X_t)$:
+\begin{align*}
+  \diff u(t, X_t) &= \bigl[\partial_t u + \mu^\top \nabla u + \tfrac{1}{2} \Tr(\sigma \sigma^\top \nabla^2 u)\bigr] \diff t + (\sigma^\top \nabla u)^\top \diff W_t \\
+  &\qquad + \int_E \mathcal{J} u \, \tilde N(\diff t, \diff e) + \int_E [\mathcal{J} u - \gamma^\top \nabla u] \, \nu(\diff e) \, \diff t.
+\end{align*}
+The three drift terms collect to $\mathcal{L} u \, \diff t$. Using the PIDE \eqref{eq:pide}, $\mathcal{L} u = -\partial_t u - f$, but the $\partial_t u \, \diff t$ is already on the left side; so after substitution the total drift becomes $-f\, \diff t$. Hence
+\[
+  \diff u(t, X_t) = -f\bigl(t, X_t, u, \sigma^\top \nabla u, \mathcal{J} u\bigr)\diff t + (\sigma^\top \nabla u)^\top \diff W_t + \int_E \mathcal{J} u \, \tilde N(\diff t, \diff e).
+\]
+This is precisely the BSDEJ dynamics for $Y_t = u(t, X_t)$, $Z_t = \sigma^\top \nabla u$, $U_t = \mathcal{J} u$. The terminal condition is inherited from $u(T, \cdot) = g$.
+\end{proof}
+
+\begin{intuition}
+Theorem~\ref{thm:fk} is the bridge between two seemingly distinct objects: a semilinear parabolic PIDE (the HJB of stochastic control) and a BSDEJ (the ``backward'' dynamics of a conditional expectation plus a nonlinear generator). Whichever representation is more tractable for a given problem is the one you use:
+
+\begin{itemize}[leftmargin=2em]
+  \item In low dimensions, solve the PIDE on a grid. This gives $u$ globally, including $\nabla u, \nabla^2 u$ and the jump operator $\mathcal{J} u$.
+  \item In high dimensions, simulate the BSDEJ via Monte Carlo. This gives $(Y_t, Z_t, U_t)$ at sampled points but scales linearly in state dimension.
+\end{itemize}
+
+Deep BSDE methods (Chapter~\ref{ch:deep-bsde}) exploit the latter: they parameterise $(Z_t, U_t)$ by neural networks and train to minimise the terminal mismatch. The neural-network parameters are implicitly learning the derivatives of $u$ at sampled points.
+\end{intuition}
+
+\section{BSDEs with jumps (BSDEJ)}
+\label{sec:bsdej}
+
+The natural generalisation of a BSDE to jump-diffusions adds a third unknown: the jump integrand $U$.
+
+\begin{definition}[BSDEJ]
+\label{def:bsdej}
+A \emph{backward stochastic differential equation with jumps} is a triple $(Y, Z, U)$ of adapted processes satisfying
+\begin{equation}
+  Y_t = g(X_T) + \int_t^T f(s, X_{s-}, Y_{s-}, Z_s, U_s) \, \diff s - \int_t^T Z_s \, \diff W_s - \int_t^T \int_E U_s(e) \, \tilde N(\diff s, \diff e),
+  \label{eq:bsdej-integral}
+\end{equation}
+where $U_s : E \to \R$ is the jump integrand at time $s$, in the sense that $U : [0, T] \times \Omega \times E \to \R$ is predictable.
+\end{definition}
+
+In differential form,
+\begin{equation}
+  -\diff Y_t = f(t, X_{t-}, Y_{t-}, Z_t, U_t) \, \diff t - Z_t \, \diff W_t - \int_E U_t(e)\, \tilde N(\diff t, \diff e), \quad Y_T = g(X_T).
+\end{equation}
+
+The role of $U_t(e)$ is to absorb the mean-zero martingale component of $Y_t$ associated with jumps of size $e$. It is the \emph{jump adjoint}: the change in $Y$ caused by a unit jump of size $e$.
+
+\subsection{Martingale representation with jumps}
+
+For the BSDEJ to be well-posed, we need a Brownian-plus-jump analogue of Theorem~\ref{thm:martingale-rep}.
+
+\begin{theorem}[Jacod--Yor martingale representation \cite{jacod1976}]
+\label{thm:jacod-yor}
+In the filtration $\filt$ generated by $W$ and $N$ (both appropriately completed), every square-integrable $\mathcal{F}_T$-measurable random variable $\xi$ admits a unique representation
+\begin{equation}
+  \xi = \E[\xi] + \int_0^T Z_s \, \diff W_s + \int_0^T \int_E U_s(e) \, \tilde N(\diff s, \diff e),
+\end{equation}
+with $Z$ adapted in $L^2(\diff t \otimes \Prob)$ and $U$ predictable in $L^2(\diff t \otimes \Prob \otimes \nu)$.
+\end{theorem}
+
+This is the ``two-source'' version of martingale representation: both the diffusion and the jump martingale measure contribute integrands. The BSDEJ existence proof (Tang--Li \cite{tang1994}, Barles--Buckdahn--Pardoux \cite{barles1997}) is a fixed-point argument analogous to Pardoux--Peng, with Lipschitz in $(y, z, u)$ replacing Lipschitz in $(y, z)$. We omit the details; the result we use is:
+
+\begin{theorem}[BSDEJ existence and uniqueness]
+\label{thm:bsdej-well-posed}
+Under the analogue of Assumption~\ref{ass:lipschitz} with $U$ included in the Lipschitz bound (measuring $U_1 - U_2$ in the $L^2(\nu)$ norm), the BSDEJ \eqref{eq:bsdej-integral} admits a unique adapted solution $(Y, Z, U)$.
+\end{theorem}
+
+\section{Mean-field games and McKean--Vlasov equations}
+\label{sec:mfg}
+
+\subsection{Interacting particle systems}
+
+Consider a system of $N$ identical agents, each with state $X^{(i)}_t \in \R^n$, evolving as
+\begin{equation}
+  \diff X^{(i)}_t = b\bigl(X^{(i)}_t, \mu^N_t\bigr) \, \diff t + \sigma\bigl(X^{(i)}_t, \mu^N_t\bigr) \, \diff W^{(i)}_t, \qquad i = 1, \ldots, N,
+  \label{eq:ips}
+\end{equation}
+where $W^{(i)}$ are independent Brownian motions and
+\begin{equation}
+  \mu^N_t := \frac{1}{N} \sum_{j=1}^N \delta_{X^{(j)}_t}
+\end{equation}
+is the empirical distribution of the whole population. Each agent's drift and diffusion depend on the \emph{state of everyone else} only through the empirical distribution $\mu^N_t$. The dynamics are symmetric --- exchangeable --- in the sense that permuting the particle labels leaves the law of the system invariant.
+
+\subsection{The mean-field limit and propagation of chaos}
+
+As $N \to \infty$, Sznitman \cite{sznitman1991} established that for Lipschitz $b, \sigma$ in $(x, \mu)$ (with the Wasserstein-$2$ metric on $\mu$), the empirical distribution $\mu^N_t$ converges to a deterministic limit $\mu_t$, and each agent decouples: in the limit, a representative particle satisfies the \emph{McKean--Vlasov SDE}
+\begin{equation}
+  \diff X_t = b(X_t, \mu_t) \, \diff t + \sigma(X_t, \mu_t) \, \diff W_t, \qquad \mu_t = \Law(X_t).
+  \label{eq:mv-sde}
+\end{equation}
+The self-referential structure is striking: $\mu_t$ is the law of the very process it drives. Existence and uniqueness for \eqref{eq:mv-sde} follow from a Picard iteration in Wasserstein distance (Carmona--Delarue \cite{carmona2018}, Vol.~I \S3).
+
+\begin{theorem}[Propagation of chaos]
+\label{thm:poc}
+Under Lipschitz conditions on $b, \sigma$, let $X^{(i)}$ solve \eqref{eq:ips} and $X^{\infty, i}$ be i.i.d.\ copies of the McKean--Vlasov solution \eqref{eq:mv-sde}. For any fixed $k \in \N$,
+\begin{equation}
+  \sup_{t \leq T} \E\Bigl[\bigl\|X^{(1)}_t - X^{\infty, 1}_t\bigr\|^2\Bigr] \leq \frac{C(T)}{N},
+\end{equation}
+and the joint law of $(X^{(1)}, \ldots, X^{(k)})$ converges to the product law $\Law(X^{\infty, 1})^{\otimes k}$ in Wasserstein-$2$.
+\end{theorem}
+
+\begin{intuition}
+Propagation of chaos says that in a very large, exchangeable population, any finite subset of particles becomes asymptotically independent. Each one ``sees'' the population only through the \emph{average} $\mu_t$, not the identities of its neighbours. This justifies replacing $\mu^N_t$ by $\mu_t$ in theoretical analysis --- and justifies simulating $\mu^N_t$ with large-but-finite $N$ in practice. For our deep BSDE solver, we use $N$ = batch size (typically 256); the empirical distribution is a Monte Carlo approximation of the true mean-field law.
+\end{intuition}
+
+\subsection{Mean-field games versus mean-field control}
+
+The above is an \emph{uncontrolled} MV-SDE: each agent's dynamics depend on the population law. In stochastic control, each agent chooses a control $\alpha^{(i)}$ to optimise their own cost. Two closely related problems emerge depending on the objective structure:
+
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{Mean-field game (MFG).}  Each agent is \emph{selfish}: they optimise $J^{(i)}(\alpha^{(i)}; \mu)$ treating the population law $\mu$ as \emph{fixed}. An \emph{equilibrium} is a fixed point: each agent's best response produces exactly the population law they assumed.
+  \item \textbf{Mean-field control (MFC).}  A central planner optimises the \emph{joint} cost. The planner's control shifts the whole population simultaneously; there is no fixed-point condition.
+\end{enumerate}
+
+The two produce generically different solutions (Carmona--Delarue \cite{carmona2018}, Vol.~II); MFG corresponds to Nash, MFC to Pareto. In our Chapter~\ref{ch:nash}, the single-agent Nash equilibrium computed by the exact CX solver is an MFG solution; the Pareto / monopolist solution is an MFC solution. The gap between them is what tacit collusion partially recovers.
+
+\subsection{McKean--Vlasov BSDEs and FBSDEs}
+
+Coupling an MV-SDE with a BSDE gives a \emph{McKean--Vlasov BSDE} (MV-BSDE) whose generator depends on the law:
+\begin{equation}
+  -\diff Y_t = f(t, X_t, Y_t, Z_t, \mu_t) \, \diff t - Z_t \, \diff W_t, \qquad Y_T = g(X_T, \mu_T), \quad \mu_t = \Law(X_t).
+\end{equation}
+If the forward $X$ also depends on $\mu_t$, we have a \emph{forward-backward} MV system (MV-FBSDE). Han, Hu and Long \cite{han2022} extended the deep BSDE method to this setting via \emph{fictitious play}: alternately fix $\mu_t$ and solve the resulting BSDE, then update $\mu_t$ to the empirical distribution produced by the learned solution, and iterate. Convergence (in Wasserstein distance) is proved under monotonicity assumptions.
+
+\section{The Cont--Xiong dealer market model}
+\label{sec:cx-model}
+
+We now specialise to the setting of this dissertation. The Cont--Xiong (2024) \cite{cont2024} dealer market is a dynamic stochastic game in which each agent is a market maker quoting bid and ask half-spreads to trade with an exogenous order-flow process. It provides the cleanest available mean-field formulation of competitive market making and --- crucially for our purposes --- admits an \emph{exact} fixed-point solution against which a neural solver can be validated.
+
+\subsection{Primitives}
+
+There are $N$ identical dealers, each with inventory $q^{(i)}_t \in \Delta \cdot \Z$ (a discrete integer lattice with tick size $\Delta$). A symmetric order-flow process generates market orders on the bid and ask sides with base arrival rates $\lambda^a, \lambda^b > 0$. The \emph{execution probability} that a market order on side $s \in \{a, b\}$ arriving at time $t$ is routed to dealer $i$ is determined by the relative attractiveness of dealer $i$'s quote versus those of the rest:
+\begin{equation}
+  p^{(i), s}_t = \frac{e^{-\alpha \delta^{(i), s}_t}}{\sum_{j=1}^{N} e^{-\alpha \delta^{(j), s}_t}},
+  \label{eq:cx-execution}
+\end{equation}
+where $\alpha > 0$ is the flow sensitivity. Larger $\alpha$ means flow is more sharply focused on the best-quoting dealer.
+
+\begin{intuition}
+Equation \eqref{eq:cx-execution} is a logit. If every dealer quotes the same $\delta$, each gets $1/N$ of the flow. If dealer $i$ undercuts by $\varepsilon$, their share grows (roughly) by a factor $e^{\alpha \varepsilon}$ relative to the others. This is the source of the competitive pressure: undercutting is locally profitable but erodes the shared surplus.
+\end{intuition}
+
+Each execution on side $s$ moves the winning dealer's inventory by $\Delta$ (up for bid fills, down for ask fills):
+\begin{equation}
+  \diff q^{(i)}_t = \Delta \bigl(\diff N^{(i), b}_t - \diff N^{(i), a}_t\bigr),
+\end{equation}
+where $N^{(i), s}_t$ is a counting process with stochastic intensity $\lambda^s \cdot p^{(i), s}_t$. Each dealer collects spread revenue on each fill:
+\begin{equation}
+  \diff \mathrm{PnL}^{(i)}_t = \delta^{(i), a}_t \, \diff N^{(i), a}_t + \delta^{(i), b}_t \, \diff N^{(i), b}_t.
+\end{equation}
+
+\subsection{Objective}
+
+Dealer $i$ maximises the discounted expected profit minus a running inventory penalty:
+\begin{equation}
+  J^{(i)}(\delta^{(i)}; \delta^{(-i)}) = \E\!\left[\int_0^\infty e^{-r t} \bigl(\delta^{(i), a}_t \lambda^a p^{(i), a}_t + \delta^{(i), b}_t \lambda^b p^{(i), b}_t - \psi(q^{(i)}_t)\bigr) \, \diff t\right],
+  \label{eq:cx-objective}
+\end{equation}
+where $\psi(q) = \phi q^2$ is the quadratic penalty and $r > 0$ is the discount rate. We have taken expectations over the execution point processes, replacing $\diff N^{(i), s}$ by its intensity $\lambda^s p^{(i), s} \, \diff t$; this is standard because $\delta^{(i), s}$ is the revenue per fill, which commutes with the conditional expectation.
+
+\begin{remark}[Stationary vs finite horizon]
+Cont--Xiong work in the infinite-horizon discounted setting, which makes the value function $V(q)$ time-independent. The finite-horizon version has $V(t, q)$ and we use it when coupling to a horizon-dependent extension (e.g.\ adverse selection with a terminal liquidation penalty). The two are linked by a standard time-change argument.
+\end{remark}
+
+\subsection{Mean-field limit of the CX model}
+\label{sec:mf-limit}
+
+As $N \to \infty$, the denominator in \eqref{eq:cx-execution} concentrates. Let $\mu_t$ denote the joint distribution of $(q^{(j)}_t, \delta^{(j), a}_t, \delta^{(j), b}_t)$ over the population. By the law of large numbers,
+\begin{equation}
+  \frac{1}{N} \sum_{j=1}^{N} e^{-\alpha \delta^{(j), a}_t} \longrightarrow \E_\mu\bigl[e^{-\alpha \Delta^a}\bigr] =: \bar f^a(\mu_t),
+\end{equation}
+with analogous notation $\bar f^b$. Thus for a representative dealer with quotes $(\delta^a, \delta^b)$, the execution probability simplifies:
+\begin{equation}
+  p^a_t = \frac{1}{N} \cdot \frac{e^{-\alpha \delta^a}}{\bar f^a(\mu_t)} \cdot (1 + o(1)),
+\end{equation}
+where the $1/N$ factor reflects that each dealer's share of flow shrinks as the population grows. Absorbing the $1/N$ into the rate definition (scaling $\lambda^s \to \tilde \lambda^s = \lambda^s / N$), the dealer's execution intensity becomes
+\begin{equation}
+  \nu^a(t) = \lambda^a e^{-\alpha \delta^a} \cdot h^a(\mu_t), \qquad h^a(\mu_t) := \bar f^a(\mu_t)^{-1}.
+  \label{eq:cx-mf-intensity}
+\end{equation}
+This is the form we work with throughout. $h^a(\mu_t) \in (0, 1]$ is the \emph{competitive factor}: in a tight-quoting population, $\bar f^a$ is large, so $h^a$ is small --- your fill rate is depressed. In a loose population, $h^a$ approaches $1$ and you recover near-monopolist economics.
+
+\begin{intuition}
+In the mean-field limit, the effect of the population on you reduces to a \emph{single scalar per side} --- the competitive factor $h^a(\mu_t)$. This scalar captures how aggressively the rest of the market is quoting. In the deep BSDE solver we will parameterise $h^a$ as a small neural network of a \emph{law embedding} $\Phi(\mu_t)$; Chapter~\ref{ch:deep-bsde} discusses which embeddings actually allow the gradient to detect distributional structure.
+\end{intuition}
+
+\subsection{HJB equation and quote derivation}
+
+For a representative dealer in the mean-field limit, the value function $V(q)$ (infinite horizon, discount rate $r$) satisfies the HJB equation
+\begin{align}
+  r V(q) = \sup_{\delta^a, \delta^b \geq 0} \Bigl\{ & \lambda^a e^{-\alpha \delta^a} h^a(\mu) \bigl[\delta^a + V(q - \Delta) - V(q)\bigr] \nonumber \\
+  + & \lambda^b e^{-\alpha \delta^b} h^b(\mu) \bigl[\delta^b + V(q + \Delta) - V(q)\bigr] - \psi(q) \Bigr\}.
+  \label{eq:cx-hjb}
+\end{align}
+
+\begin{proof}[Derivation]
+Over a short interval $[t, t + \diff t]$, the dealer collects expected discounted revenue from fills plus a penalty. With fill intensities $\nu^a = \lambda^a e^{-\alpha \delta^a} h^a$ and $\nu^b = \lambda^b e^{-\alpha \delta^b} h^b$, each side fires independently and at most once in $\diff t$ (probability of two events in $\diff t$ is $o(\diff t)$). The value satisfies the Bellman principle:
+\begin{multline}
+  V(q) = \sup_{\delta^a, \delta^b} \bigl\{ \nu^a \diff t \cdot [\delta^a + V(q - \Delta) e^{-r \diff t}] \\
+  + \nu^b \diff t \cdot [\delta^b + V(q + \Delta) e^{-r \diff t}] + (1 - \nu^a \diff t - \nu^b \diff t) V(q) e^{-r \diff t} - \psi(q) \diff t \bigr\} + o(\diff t).
+\end{multline}
+Taylor-expanding $e^{-r \diff t} \approx 1 - r \diff t$, dividing by $\diff t$, and dropping $o(1)$ terms yields \eqref{eq:cx-hjb}.
+\end{proof}
+
+To solve \eqref{eq:cx-hjb}, fix $q$ and optimise over $(\delta^a, \delta^b)$. The ask FOC is
+\begin{equation}
+  \frac{\partial}{\partial \delta^a}\Bigl\{ \lambda^a e^{-\alpha \delta^a} h^a [\delta^a - (V(q) - V(q - \Delta))] \Bigr\} = 0.
+\end{equation}
+Differentiating, using the product rule,
+\begin{equation}
+  \lambda^a e^{-\alpha \delta^a} h^a \bigl[1 - \alpha(\delta^a - (V(q) - V(q - \Delta)))\bigr] = 0.
+\end{equation}
+Since the prefactor is positive, we set the bracket to zero:
+\begin{equation}
+  \boxed{\delta^{a, *}(q) = \frac{1}{\alpha} + \bigl(V(q) - V(q - \Delta)\bigr).}
+  \label{eq:foc-ask}
+\end{equation}
+The bid side is symmetric:
+\begin{equation}
+  \boxed{\delta^{b, *}(q) = \frac{1}{\alpha} + \bigl(V(q) - V(q + \Delta)\bigr).}
+  \label{eq:foc-bid}
+\end{equation}
+
+\begin{intuition}
+The optimal ask is the monopolist spread $1/\alpha$ \emph{plus} the marginal cost of losing one unit of inventory (the drop in $V$ from $q$ to $q - \Delta$). When you are long inventory ($q$ large), $V$ is decreasing, so $V(q) - V(q - \Delta) > 0$ and you quote \emph{wider}: you want to discourage further fills on the ask side and unload the position. When short, the opposite. Equations \eqref{eq:foc-ask}--\eqref{eq:foc-bid} are the central formulae of this dissertation: everything we compute --- whether by exact solver, neural Bellman, or deep BSDEJ --- is ultimately evaluating these two finite differences of $V$.
+
+\medskip
+
+Note the interesting structural property: the \emph{total spread} $\delta^{a, *} + \delta^{b, *} = 2/\alpha + [2V(q) - V(q - \Delta) - V(q + \Delta)]$ depends only on the \emph{curvature} of $V$ at $q$, while the \emph{skew} $\delta^{a, *} - \delta^{b, *} = V(q - \Delta) + V(q + \Delta) - 2 V(q) \cdot \text{(zero)} + [V(q + \Delta) - V(q - \Delta)]$ equals the \emph{slope} of $V$. For the quadratic-penalty model, $V$ is concave and roughly parabolic in $q$, so the spread is near-constant in $q$ and the skew is linear in $q$. We reproduce this shape numerically in Chapter~\ref{ch:bellman}.
+\end{intuition}
+
+\subsection{The CX model as a BSDEJ}
+\label{sec:cx-model-as-bsdej}
+
+We now establish the theoretical connection that justifies using BSDEJ methodology on the CX model. This is the central content of the theory note \cite{garry2026bsdeconnection}, expanded here with full derivations.
+
+Define the value process along the inventory trajectory:
+\begin{equation}
+  Y_t := V(t, q_t).
+\end{equation}
+Applying It\^o's formula for jump processes \eqref{eq:jump-ito} (with no diffusion term --- $q_t$ is a pure jump process),
+\begin{align}
+  \diff Y_t &= \partial_t V(t, q_{t-}) \, \diff t + \bigl[V(t, q_{t-} + \Delta) - V(t, q_{t-})\bigr] \diff N^b_t \nonumber \\
+  &\qquad + \bigl[V(t, q_{t-} - \Delta) - V(t, q_{t-})\bigr] \diff N^a_t. \label{eq:cx-ito-V}
+\end{align}
+(We use $q_{t-} + \Delta$ for the bid jump because inventory goes up when we buy; ask jumps decrease inventory.) Introducing the jump adjoints
+\begin{equation}
+  U^a_t := V(t, q_{t-} - \Delta) - V(t, q_{t-}), \qquad U^b_t := V(t, q_{t-} + \Delta) - V(t, q_{t-}),
+  \label{eq:cx-jump-adjoints}
+\end{equation}
+compensating \eqref{eq:cx-ito-V} by adding and subtracting the intensity-weighted jump contributions, and using the HJB equation \eqref{eq:cx-hjb} to re-express $\partial_t V = -\mathcal{L}^* V$, we obtain
+\begin{equation}
+  -\diff Y_t = \underbrace{\bigl[r Y_t + \psi(q_t) - \lambda^a e^{-\alpha \delta^{a,*}} h^a [\delta^{a,*} + U^a_t] - \lambda^b e^{-\alpha \delta^{b,*}} h^b [\delta^{b,*} + U^b_t]\bigr]}_{=: f(t, q_t, Y_t, U^a_t, U^b_t)} \diff t - U^a_t \tilde{\diff N^a_t} - U^b_t \tilde{\diff N^b_t},
+  \label{eq:cx-as-bsdej}
+\end{equation}
+where $\widetilde{\diff N^s_t} = \diff N^s_t - \nu^s_t \, \diff t$ are the compensated jump martingales. With the optimal quotes \eqref{eq:foc-ask}--\eqref{eq:foc-bid} substituted, the generator simplifies: in the optimal-ask term,
+\[
+  \delta^{a,*} + U^a_t = \bigl(\tfrac{1}{\alpha} + V(q) - V(q - \Delta)\bigr) + \bigl(V(q - \Delta) - V(q)\bigr) = \tfrac{1}{\alpha},
+\]
+the monopolist's own markup. Analogously for the bid. So the fill-contribution terms collapse to $\nu^a \cdot 1/\alpha + \nu^b \cdot 1/\alpha$, and the final BSDEJ generator takes the Markovian form of $(q_t, Y_t, U^a_t, U^b_t)$.
+
+\begin{proposition}[CX model $\leftrightarrow$ BSDEJ, stationary case]
+\label{prop:cx-bsdej}
+Fix $(\lambda^a, \lambda^b, \alpha, r, \phi, \Delta)$ and a population law $\mu$. The value function $V(q)$ of the mean-field CX market maker, together with the jump adjoints $U^s(q) = V(q \pm \Delta) - V(q)$, is the unique solution of the stationary BSDEJ \eqref{eq:cx-as-bsdej} in the sense that: the pair $(V, U^a, U^b)$ satisfies the HJB \eqref{eq:cx-hjb} with optimal quotes \eqref{eq:foc-ask}--\eqref{eq:foc-bid} if and only if it satisfies the stationary BSDEJ.
+\end{proposition}
+
+\begin{proof}
+Forward direction: apply It\^o to $V(q_t)$ as in \eqref{eq:cx-ito-V} and compensate. The stationary HJB \eqref{eq:cx-hjb} gives $r V(q) = \text{(generator at optimal controls)}$, which, rearranged, is the time-independent form of \eqref{eq:cx-as-bsdej}. Reverse direction: starting from the BSDEJ and taking expectations term by term, the jump martingales vanish and one recovers \eqref{eq:cx-hjb}. Uniqueness follows from Theorem~\ref{thm:bsdej-well-posed}.
+\end{proof}
+
+\begin{remark}[Why this matters]
+Proposition~\ref{prop:cx-bsdej} makes three points simultaneously:
+\begin{itemize}
+  \item The CX model is not just a collection of coupled ODEs on a grid; it is a genuine BSDEJ.
+  \item The deep BSDE methodology developed for generic BSDEJs applies directly to the CX problem.
+  \item The jump adjoints $U^a, U^b$ --- which the neural solver will learn --- have a clean economic interpretation: they are the \emph{marginal value of an ask/bid fill}, equivalently the discrete $\partial V / \partial q$ in each direction.
+\end{itemize}
+\end{remark}
+
+\subsection{Forward SDE approximations}
+
+For the diffusion-approximation solvers (Chapter~\ref{ch:deep-bsde}), we replace the compound Poisson inventory process with its moment-matched Gaussian diffusion. Writing $\mu_q := \lambda^b f^b - \lambda^a f^a$ and $\sigma_q^2 := \lambda^a f^a + \lambda^b f^b$ (where $f^s = e^{-\alpha \delta^s}$),
+\begin{equation}
+  \diff q_t \approx \mu_q \, \diff t + \sigma_q \, \diff W^q_t.
+  \label{eq:cx-diffusion-approx}
+\end{equation}
+By construction, $\E[\diff q_t] = \mu_q \, \diff t$ and $\Var(\diff q_t) = \sigma_q^2 \, \diff t$ match the first two moments of the jump increment. For high fill rates this is an accurate approximation (Donsker); for low rates it systematically understates tail risk.
+
+Under this substitution, the BSDEJ \eqref{eq:cx-as-bsdej} reduces to a classical BSDE (no $U$); the HJB \eqref{eq:cx-hjb} reduces to a second-order PDE; and the FOCs \eqref{eq:foc-ask}--\eqref{eq:foc-bid} are replaced by derivatives in the continuous limit:
+\begin{equation}
+  \delta^{a,*} = \frac{1}{\alpha} + \frac{Z^q}{\sigma_q}, \qquad \delta^{b,*} = \frac{1}{\alpha} - \frac{Z^q}{\sigma_q}, \qquad Z^q = \sigma_q \partial_q V.
+  \label{eq:cx-foc-diffusion}
+\end{equation}
+This is the form the original deep BSDE solver \cite{garry2026preprint2} uses, and it is the form that Chapter~\ref{ch:deep-bsde} analyses for architectural failure modes. The jump form \eqref{eq:foc-ask}--\eqref{eq:foc-bid} of Chapter~\ref{ch:bellman} is more fundamental but harder to train directly; it requires learning $U$-valued networks.
+
+\section{Summary}
+
+We have built up the vocabulary for the rest of the dissertation:
+\begin{itemize}[leftmargin=2em]
+  \item BSDEs and BSDEJs as backward analogues of forward SDEs, well-posed under Lipschitz conditions (Pardoux--Peng, Tang--Li).
+  \item The nonlinear Feynman--Kac theorem identifying BSDE solutions with semilinear PIDE solutions.
+  \item Mean-field / McKean--Vlasov formulations as $N \to \infty$ limits of exchangeable particle systems, with propagation of chaos.
+  \item The Cont--Xiong dealer market, its HJB equation, the explicit FOC for optimal quotes, and its reformulation as a BSDEJ.
+\end{itemize}
+
+Chapter~\ref{ch:deep-bsde} turns to the question: given that BSDEJ theory justifies the approach, how do we actually solve these equations numerically using deep learning? And under what architectural conditions does that actually work?

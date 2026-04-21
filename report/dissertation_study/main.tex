@@ -1,0 +1,82 @@
+% Dissertation Study Draft
+% Numerical Analysis of Mean-Field BSDEs:
+% Deep Learning Solutions for Interacting Agents in Limit Order Books
+%
+% This is a long-form explanatory draft — a study companion, not the submission.
+% Every derivation is spelled out; every theorem is surrounded by intuition.
+
+\documentclass[11pt,a4paper]{report}
+
+% ---- Packages ----------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{siunitx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{parskip}
+\usepackage[strings]{underscore}
+
+% ---- Theorem environments ----------------------------------------------------
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem*{intuition}{Intuition}
+\newtheorem*{note}{Note}
+
+% ---- Notational shortcuts ----------------------------------------------------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Law}{\mathrm{Law}}
+\newcommand{\diff}{\mathrm{d}}
+\newcommand{\Ft}{\mathcal{F}_t}
+\newcommand{\filt}{(\mathcal{F}_t)_{t \geq 0}}
+\newcommand{\ito}{\mathrm{It\hat o}}
+\DeclareMathOperator{\Tr}{Tr}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator{\sign}{sgn}
+
+% ---- Title -------------------------------------------------------------------
+\title{\Huge Numerical Analysis of Mean-Field BSDEs: \\[3pt]
+       \Large Deep Learning Solutions for Interacting Agents in Limit Order Books \\[12pt]
+       \large \textit{Study Draft --- expanded derivations and full explanations}}
+\author{Christian Garry \\ \small Durham University}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\input{ch01_introduction.tex}
+\input{ch02_mathematical_framework.tex}
+\input{ch03_deep_bsde_methods.tex}
+\input{ch04_neural_bellman_solver.tex}
+\input{ch05_nash_and_collusion.tex}
+\input{ch06_conclusion.tex}
+
+\appendix
+\input{appendices.tex}
+
+\bibliographystyle{plain}
+% No \bibliography: references are inline in each chapter for the study draft.
+\end{document}

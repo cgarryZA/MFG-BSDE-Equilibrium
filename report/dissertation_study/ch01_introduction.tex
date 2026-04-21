@@ -1,0 +1,78 @@
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{The market-maker's problem}
+
+A \emph{market maker} is a specialist trader whose role is to provide liquidity: they stand ready to both buy and sell a security, earning the bid--ask spread in compensation for the risks they bear. In a modern electronic exchange, they do this by posting limit orders in the \emph{limit order book} (LOB): a queue of outstanding buy and sell offers at different prices.
+
+Two numbers describe their quoting strategy at any instant:
+\begin{itemize}
+  \item $\delta^a_t \geq 0$: the half-spread on the ask side --- the distance from the mid-price at which they are willing to sell.
+  \item $\delta^b_t \geq 0$: the half-spread on the bid side --- the distance at which they are willing to buy.
+\end{itemize}
+When an incoming market order arrives, it consumes whichever side is best quoted; the market maker's inventory $q_t$ jumps up or down by one unit, and they earn $\delta^a_t$ or $\delta^b_t$.
+
+Three intertwined forces shape the optimal $(\delta^a, \delta^b)$:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{The fill-rate / margin trade-off.}  The further you quote from the mid, the less likely you are to be hit, but the more you earn per fill. In the workhorse Avellaneda--Stoikov (2008) \cite{avellaneda2008} / Cont--Xiong (2024) \cite{cont2024} setup, fill intensities are exponential: $\lambda(\delta) \propto e^{-\alpha \delta}$. A monopolist facing no competition quotes at the expected-revenue maximum $\delta^* = 1/\alpha$.
+\item \textbf{Inventory risk.}  You do not want to end up heavily long or short, because price moves in the ``wrong'' direction hurt you. A quadratic penalty $\psi(q) = \phi q^2$ on running and terminal inventory pushes you to skew quotes: tighter ask when long, tighter bid when short, so that fills naturally \emph{mean-revert} inventory.
+\item \textbf{Competition.}  Other market makers are quoting the same asset. Your effective fill rate depends on the distribution of \emph{their} quotes. If everyone tightens, your margin erodes; if everyone widens, you can too. This mean-field coupling turns a single-agent control problem into a fixed-point / equilibrium problem.
+\end{enumerate}
+
+These three forces interact nontrivially. Cont and Xiong \cite{cont2024} showed that the fully dynamic equilibrium admits a rich set of outcomes: a \emph{Nash equilibrium} where each agent best-responds to the others, a \emph{Pareto / cartel} solution where agents coordinate on wider spreads, and --- under learning dynamics --- a \emph{tacit-collusion} regime where self-interested RL agents converge strictly above Nash without explicit coordination. Explaining, validating and quantifying these outcomes at arbitrary $N$ is the central motivating question of this dissertation.
+
+\section{Why BSDEs?}
+
+The classical tool for stochastic optimal control is the Hamilton--Jacobi--Bellman (HJB) equation: the value function $V$ satisfies a nonlinear second-order PDE whose supremum over controls defines the optimal strategy. In low dimensions one solves HJB directly on a grid. In high dimensions the grid method collapses under the curse of dimensionality.
+
+An equivalent formulation --- and the one we exploit --- is the \emph{backward stochastic differential equation} (BSDE):
+\begin{equation}
+  -\diff Y_t = f(t, X_t, Y_t, Z_t)\,\diff t - Z_t \diff W_t, \qquad Y_T = g(X_T).
+  \label{eq:intro-bsde}
+\end{equation}
+Discovered by Pardoux and Peng (1990) \cite{pardoux1990}, BSDEs are the Markovian ``backward in time'' cousin of forward SDEs. Their value $Y_t$ equals the value function $V(t, X_t)$ along the state trajectory, and the process $Z_t$ equals the (scaled) gradient $\sigma^\top \nabla V$.
+
+For our market-making problem, the forward process is driven by Poisson jump events (fills), not diffusions. The natural generalisation is the BSDE with jumps --- the \emph{BSDEJ} of Tang and Li (1994) \cite{tang1994} --- in which $Z_t$ is supplemented by a jump integrand $U_t(e)$ encoding the post-jump value change. We show in Chapter~\ref{ch:math} that the Cont--Xiong dealer market is equivalent to a specific BSDEJ whose generator and terminal we will derive from first principles.
+
+Two advantages motivate this route:
+\begin{itemize}
+  \item \textbf{Dimension.}  BSDEJs can be solved via Monte Carlo simulation whose cost scales linearly in the state dimension, whereas grid-based PDE methods scale exponentially. For high-dimensional extensions (multi-asset, common noise, heterogeneous agents) this is the only practical route.
+  \item \textbf{Nonlinearity.}  The HJB generator $f$ is naturally nonlinear in $(Y, Z, U)$ because the supremum over controls produces a Hamiltonian. BSDE theory accommodates arbitrary Lipschitz nonlinearities.
+\end{itemize}
+
+The modern tool for actually solving BSDEs in practice is the \emph{deep BSDE} method of Han, Jentzen and E (2017/2018) \cite{han2018}, in which $Z_t$ (and, in our jump version, $U_t$) is parameterised by a neural network and trained via backpropagation through the discretised BSDE trajectory. We describe this method in detail in Chapter~\ref{ch:deep-bsde} and devote substantial attention to the \emph{architectural conditions} under which the method works --- conditions we found the hard way (Chapter~\ref{ch:deep-bsde}, \S3).
+
+\section{Contributions}
+
+This dissertation makes four contributions:
+
+\begin{enumerate}[leftmargin=2em,label=(C\arabic*)]
+\item \textbf{A validated neural Bellman solver for the stationary Cont--Xiong model.}  We implement and validate a deep BSDE solver against the exact tabular fictitious-play solution of Cont--Xiong (their Algorithm~1). Across $N \in \{2, 5, 10\}$ agents we achieve spread errors below $1\%$ and value-function errors below $2\%$. The method's main advantage is that it scales to regimes (large $Q$, continuous inventory, 3-D state with adverse selection) where Algorithm~1 becomes intractable. Chapter~\ref{ch:bellman}.
+\item \textbf{Architectural diagnostics for McKean--Vlasov deep BSDEs.}  In companion preprint \cite{garry2026preprint2} (included here as Chapter~\ref{ch:deep-bsde}~\S3) we identify three independent failure modes that silently suppress the mean-field signal in deep BSDE solvers:
+\begin{itemize}
+  \item \emph{Generator bypass}: the BSDE generator did not use the law embedding, so the optimiser had no gradient signal from the loss back to the encoder.
+  \item \emph{BatchNorm erasure}: $\Phi(\mu_t)$ is broadcast-identical across the batch, forcing zero batch variance and causing BatchNorm to zero out the feature.
+  \item \emph{Representation collapse}: under symmetric inputs, a random DeepSets encoder cancels variance information in its mean-pooling step.
+\end{itemize}
+After correcting all three, the learned competitive factor $h(\Phi(\mu_t))$ varies by $4\times$ across population shapes, and optimal quotes shift by $2\times$, with quote skew flipping sign --- empirically validating mean-field effects that the architecture had previously masked.
+\item \textbf{A finite-horizon BSDEJ solver} for the jump form of the Cont--Xiong model (\S\ref{sec:bsdej-solver}). Unlike the diffusion-approximation solver, this version learns the jump adjoints $U^a, U^b$ directly and does not require the moment-matched Gaussian reduction. We show a version using shared weights across time steps plus a warm-start initialisation achieves $2.6\%$ error against the exact benchmark (Chapter~\ref{ch:bellman}).
+\item \textbf{Statistical evidence of tacit collusion in MADDPG-trained dealers.}  In Chapter~\ref{ch:nash} we train decentralised actor--critic agents on the CX market using the MADDPG algorithm. At $N=2$, $15$ of $20$ independent Hamilton-cluster seeds converge to spreads strictly above the single-shot Nash value ($p = 0.002$, one-sided binomial test); at $N=5$, $5$ of $5$ seeds do. The outcome is not explicitly coordinated --- it emerges from the combination of monopolist pretraining and slow gradient dynamics.
+\end{enumerate}
+
+\section{Reader's guide}
+\label{sec:readers-guide}
+
+The dissertation can be read linearly; each chapter assumes the previous. Readers already fluent in a topic can jump in:
+
+\begin{itemize}
+  \item Chapter~\ref{ch:math} builds the mathematical scaffolding. If you know BSDEs, BSDEJs, the nonlinear Feynman--Kac theorem, and mean-field games, you can skim this, though \S\ref{sec:cx-model-as-bsdej} (the CX model $\leftrightarrow$ BSDEJ identification) and \S\ref{sec:mf-limit} (the mean-field limit under discrete jumps) are non-standard.
+  \item Chapter~\ref{ch:deep-bsde} covers the deep BSDE methodology. If you know Han--Jentzen--E (2018) and Han--Hu--Long (2022), skip directly to \S\ref{sec:arch-failure-modes} for the architectural findings.
+  \item Chapters~\ref{ch:bellman} and \ref{ch:nash} are the empirical core. Chapter~\ref{ch:bellman} is the main computational result (a validated solver). Chapter~\ref{ch:nash} is the main economic result (tacit collusion under learning dynamics).
+  \item Chapter~\ref{ch:conclusion} summarises, acknowledges limitations, and proposes extensions.
+  \item Appendix~\ref{app:proofs} collects proof sketches; Appendix~\ref{app:implementation} collects implementation and reproducibility details.
+\end{itemize}
+
+\medskip
+
+Throughout, I adopt the pedagogical convention of pairing every non-trivial theorem with a \emph{plain-English} paragraph before (giving intuition) and after (connecting the formal statement back to the application). A ``study-draft'' like this is meant to be read, not scanned; the additional prose trades page-count for clarity of ideas. Where relevant, I cite the specific repo file and line that implements a given equation.

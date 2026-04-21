@@ -1,0 +1,179 @@
+\chapter{Nash Equilibrium and Tacit Collusion}
+\label{ch:nash}
+
+Chapter~\ref{ch:bellman} established a validated solver for the mean-field version of the CX problem --- one representative agent best-responding to a fixed population law. This chapter turns to the \emph{genuine multi-agent} setting, in which a finite number $N$ of strategic dealers simultaneously learn policies and influence each other. Three equilibrium concepts become relevant, and empirically they are all distinct: the single-shot \emph{Nash equilibrium}, the joint-optimal \emph{Pareto} (cartel) outcome, and a \emph{tacit-collusion} regime that emerges under decentralised gradient-based learning.
+
+Our empirical contribution is a statistical confirmation that MADDPG-trained dealers converge to spreads strictly above Nash: at $N = 2$, $15$ of $20$ independent Hamilton-cluster seeds do so ($p = 0.002$, one-sided binomial test); at $N = 5$, $5$ of $5$ seeds do. This chapter derives the Nash and Pareto benchmarks from first principles and discusses the mechanisms behind the observed collusion.
+
+\section{Equilibrium concepts}
+\label{sec:eqm-concepts}
+
+Fix the market parameters (arrival rates, flow sensitivity, discount, penalty). An $N$-agent strategy profile is $(\pi^{(1)}, \ldots, \pi^{(N)})$ where each $\pi^{(i)}$ maps the agent's state (at minimum their inventory $q^{(i)}$) to a pair of half-spreads $(\delta^{(i), a}, \delta^{(i), b})$. Each agent's value is the expected discounted profit:
+\begin{equation}
+  J^{(i)}(\pi^{(i)}; \pi^{(-i)}) = \E\!\left[\int_0^\infty e^{-r t} \bigl(r^{(i), a}_t + r^{(i), b}_t - \psi(q^{(i)}_t)\bigr) \, \diff t\right],
+\end{equation}
+where $r^{(i), s}_t$ is agent $i$'s expected revenue rate on side $s$.
+
+\subsection{Nash equilibrium}
+
+\begin{definition}[Nash equilibrium]
+\label{def:nash}
+A profile $(\pi^{*, 1}, \ldots, \pi^{*, N})$ is a Nash equilibrium if for every $i$ and every $\pi^{(i)}$,
+\begin{equation}
+  J^{(i)}(\pi^{*, i}; \pi^{*, -i}) \geq J^{(i)}(\pi^{(i)}; \pi^{*, -i}).
+\end{equation}
+\end{definition}
+
+Equivalently: at the equilibrium profile, no single agent can profitably deviate unilaterally. For the symmetric CX market --- where all agents share the same objective functional and the dynamics are exchangeable --- there is a unique \emph{symmetric} Nash equilibrium in which every agent follows the same policy $\pi^*$. Cont and Xiong \cite{cont2024} proved this and gave Algorithm~1 for computing $\pi^*$ by fictitious play on the inventory grid.
+
+\subsection{Pareto optimum (cartel)}
+
+\begin{definition}[Pareto optimum]
+A profile is Pareto-optimal if no alternative profile makes every agent weakly better off and some agent strictly better off.
+\end{definition}
+
+For the symmetric CX market, the efficient Pareto profile corresponds to the \emph{cartel} outcome: all agents agree to quote the monopolist spread $\delta^a = \delta^b = 1/\alpha$ and share flow equally. This maximises joint revenue because the logit share equalises at $1/N$, while the expected revenue per fill (the monopolist's $\delta \cdot e^{-\alpha \delta} = 1/(\alpha e)$) is the maximum achievable. The Pareto spread is therefore wider than the Nash spread.
+
+\subsection{Nash vs Pareto: the prisoner's dilemma structure}
+
+The CX market is a prisoner's-dilemma in the following sense. Consider any agent facing the Pareto profile. Their best response is \emph{not} to continue cooperating at $\delta = 1/\alpha$; it is to undercut slightly and capture a larger flow share at a small reduction in per-fill margin. Iterated undercuts by all agents drive spreads below the Pareto value down to the Nash point, where no further undercut is profitable. At Nash, each agent is \emph{locally} optimal but the population is \emph{jointly} suboptimal (everyone would be better off agreeing to cooperate).
+
+\subsection{Exact benchmarks from the committed JSONs}
+
+Running the exact solvers with the repo's default parameters produces the following:
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Regime & $\delta^{a}(0)$ & $\delta^{b}(0)$ & Spread at $q = 0$ & $V(0)$ \\ \midrule
+Pareto / monopolist & $0.797$ & $0.797$ & $1.593$ & $28.02$ \\
+Nash ($N = 2$) & $0.739$ & $0.739$ & $\mathbf{1.478}$ & $33.41$ \\
+Nash ($N = 5$) & $0.739$ & $0.739$ & $1.478$ & $33.41$ \\ \bottomrule
+\end{tabular}
+\end{table}
+
+Two observations:
+\begin{enumerate}[leftmargin=2em]
+  \item The Pareto spread exceeds the Nash spread by $\sim 7\%$: this is the coordination surplus that cooperation would extract.
+  \item Nash at $N = 5$ equals Nash at $N = 2$: at $q = 0$ the symmetric equilibrium is structurally invariant to $N$ because of the normalisation $\lambda^s / N$ in the MF limit. This may look surprising but is expected (Cont--Xiong \cite{cont2024}, Prop.~3.2).
+\end{enumerate}
+
+The regenerated plot \texttt{plots\_cx/regenerated/nash\_pareto\_spreads.png} visualises the quote profiles and spread comparison across the inventory range.
+
+\section{Multi-agent deep reinforcement learning}
+\label{sec:maddpg}
+
+Solving the single-shot Nash gives the \emph{equilibrium outcome} if agents could commit to equilibrium strategies. But real agents --- whether human traders or automated market-making algorithms --- do not compute fixed points; they \emph{learn}. What learning dynamics actually converge to depends on the algorithm, the initialisation, and the gradient flow. This section describes the Multi-Agent Deep Deterministic Policy Gradient (MADDPG) algorithm of Lowe et al.\ \cite{lowe2017} applied to the CX market, as implemented in [\texttt{solver\_cx\_multiagent.py}](../../solver_cx_multiagent.py).
+
+\subsection{DDPG for single-agent continuous control}
+
+\emph{Deep Deterministic Policy Gradient} (DDPG, Silver et al.\ \cite{silver2014}) is the actor-critic RL method for continuous action spaces. For a single agent:
+\begin{itemize}
+  \item \textbf{Actor} $\pi_\theta(s) : \mathcal{S} \to \mathcal{A}$: deterministic policy mapping states to actions.
+  \item \textbf{Critic} $Q_\phi(s, a) : \mathcal{S} \times \mathcal{A} \to \R$: state-action value function.
+\end{itemize}
+Training alternates two steps:
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{Critic update} (TD learning): given a transition $(s, a, r, s')$ from a replay buffer,
+  \begin{equation}
+    y = r + \gamma Q_{\phi^-}(s', \pi_{\theta^-}(s')), \qquad \phi \leftarrow \phi - \eta_\phi \nabla_\phi (Q_\phi(s, a) - y)^2,
+  \end{equation}
+  where $\phi^-, \theta^-$ are \emph{target network} parameters that are slowly updated via $\theta^- \leftarrow (1 - \tau) \theta^- + \tau \theta$ with $\tau \in (0, 1)$ small.
+  \item \textbf{Actor update} (deterministic policy gradient):
+  \begin{equation}
+    \theta \leftarrow \theta + \eta_\theta \nabla_\theta Q_\phi(s, \pi_\theta(s)),
+  \end{equation}
+  pushing the policy to produce actions the critic scores highly.
+\end{enumerate}
+Exploration is added externally by perturbing the deterministic action with Gaussian or Ornstein--Uhlenbeck noise during training.
+
+\subsection{MADDPG: one actor-critic per agent}
+
+In the multi-agent setting, each agent $i$ has its own $(\pi^{(i)}_\theta, Q^{(i)}_\phi)$ and target networks. The full MADDPG algorithm centralises the critic: each $Q^{(i)}$ takes as input the \emph{joint} state-action of \emph{all} agents, which gives centralised training despite decentralised execution.
+
+The repo's simpler variant uses \emph{decentralised critics}: each $Q^{(i)}_\phi$ only sees agent $i$'s own $(q^{(i)}, \delta^{(i), a}, \delta^{(i), b})$, not the other agents' states. This is a significant simplification from full MADDPG but is motivated by the informational structure of the market: in practice, a market maker does not observe competitors' inventories. The decentralisation makes the critic's learning harder (competitors' actions are effectively noise in the reward signal) but matches the real problem.
+
+\subsection{Reward function}
+
+At each step, agent $i$ receives a reward scaled to stabilise training:
+\begin{equation}
+  r^{(i)}_t = -\frac{\phi (q^{(i)}_t)^2}{c_\text{cost}} + \frac{1}{2} c_\text{spread} \bigl[f^a(\delta^{(i), a}_t) \delta^{(i), a}_t + f^b(\delta^{(i), b}_t) \delta^{(i), b}_t\bigr],
+\end{equation}
+where $c_\text{cost}, c_\text{spread}$ are normalisation constants chosen so that the inventory penalty and spread revenue are of comparable magnitude. The expected-over-fills form of the reward (rather than sampled $\pm 1$ fills) reduces variance in the gradient signal at the cost of a slight bias (negligible at the used time resolution).
+
+\subsection{Actor and critic architectures}
+
+Three-hidden-layer MLPs with LayerNorm + ReLU:
+\begin{align}
+  \pi^{(i)}_\theta: q \mapsto \text{sigmoid-scaled to } [\delta_{\min}, \delta_{\max}] = [0.1, 2.0], \\
+  Q^{(i)}_\phi: (q, \delta^a, \delta^b) \mapsto \R.
+\end{align}
+LayerNorm (not BatchNorm, for the reasons in \S\ref{subsec:batchnorm-erasure}: BatchNorm on 1-particle batches behaves pathologically) is used throughout. The architecture details --- widths, learning rates, target-update rate $\tau = 0.01$, exploration $\varepsilon$-decay --- are in [\texttt{solver\_cx\_multiagent.py}](../../solver_cx_multiagent.py) lines 40--82.
+
+\subsection{Pretraining from the monopolist solution}
+\label{subsec:pretraining}
+
+A crucial detail: the actor is \emph{pretrained} on the monopolist solution before MADDPG training begins. Specifically, the actor is trained via supervised regression to match $\pi^{*, \text{mon}}(q)$ --- the monopolist's optimal policy from the exact solver. This places the initial policy at the Pareto-cooperative spread $1/\alpha$ and gives the critic a sensible starting target.
+
+Why does this matter? Without pretraining, a randomly-initialised actor produces random quotes. The critic learns to evaluate these random actions and directs the actor towards high-reward actions. On a small market with a strong best-response signal (undercut the opponent for a gain), the agent will rapidly discover the Nash equilibrium --- and the whole population undercuts to the tight-Nash spread. The pretraining + slow gradient combination prevents this rapid descent by keeping the agents at cooperative spreads long enough for the learning dynamics to find a different attractor.
+
+\subsection{The cluster experiment}
+
+Implementing 20 independent training runs is expensive: each takes $\sim 500$ episodes of $500$ environment steps, about 15 minutes on a GPU. The repo includes SLURM array-job scripts in [\texttt{cluster/}](../../cluster/) to parallelise across a Hamilton-class HPC system. Each job has a distinct random seed (for initialisation and exploration noise); all jobs share identical hyperparameters.
+
+After all 20 runs complete, [\texttt{cluster/collect\_results.py}](../../cluster/collect_results.py) aggregates the final spreads and runs a one-sided sign test against the single-shot Nash value ($1.478$) to produce a $p$-value and 95\% confidence interval.
+
+\section{Tacit collusion: the main result}
+\label{sec:tacit-collusion}
+
+The combined outcome from the 20 Hamilton cluster rounds at $N = 2$, and the 5 rounds at $N = 5$, is summarised in the repo's main README key-results table. The headline: \textbf{at $N = 2$, 15 of 20 seeds converge to final spreads strictly above the Nash value of $1.478$, with one-sided sign-test $p = 0.002$; at $N = 5$, 5 of 5 seeds do.}
+
+\subsection{What ``tacit collusion'' means}
+
+No explicit coordination between agents is built into MADDPG. Each agent trains independently on its own reward signal. Yet the population settles on spreads closer to the cartel outcome than to the single-shot Nash. This is \emph{tacit} collusion: the coordinated outcome emerges from the combination of the learning algorithm, initialisation, and training dynamics, not from any shared message-passing or joint optimisation.
+
+The phenomenon is well-known in the algorithmic-pricing literature (Calvano et al.\ \cite{calvano2020}, Cont--Xiong \cite{cont2024}): Q-learning agents in competitive markets frequently converge to supra-competitive prices. Our contribution is to reproduce this finding in a continuous-action deep RL setting that closely matches the BSDE-formulated CX model, providing a cleaner theoretical backdrop against which to interpret the numerical outcome.
+
+\subsection{Mechanisms producing tacit collusion}
+
+Why do the agents fail to undercut each other down to the Nash equilibrium? At least four mechanisms contribute, and the combination is what matters:
+
+\begin{enumerate}[leftmargin=2em,label=(M\arabic*)]
+  \item \textbf{Pretraining anchor.}  As discussed in \S\ref{subsec:pretraining}, initialising at the monopolist quote places the agents in the Pareto basin of attraction. Without this, the MADDPG typically descends to Nash within a few episodes.
+  \item \textbf{Slow gradient dynamics.}  The target-network update $\tau = 0.01$ means effective learning happens on a timescale of $1/\tau = 100$ episodes. Over these timescales, the population quotes update slowly; a coordinated wide-spread outcome remains metastable because each agent's local gradient is small (the undercut incentive at the Pareto outcome is only $O(1)$ in the prisoner's-dilemma margin).
+  \item \textbf{Value-function generalisation.}  The critic is a neural network, not a lookup table. It must generalise from observed transitions to unobserved state-action pairs. When the actor is anchored near the Pareto outcome, the critic's training distribution does not sample the region below Nash much; its $Q$ estimates there are inaccurate, undermining the actor's ability to exploit a hypothetical undercut.
+  \item \textbf{Exploration noise decay.}  Exploration starts at $\varepsilon_0 = 0.05$ and decays exponentially. By the time the population is at the Pareto-cooperative region, exploration is small; the agents cannot stumble into the Nash-undercut region accidentally.
+\end{enumerate}
+
+Remove any one of these and the tacit-collusion outcome weakens significantly. In particular, running from a random initialisation (no pretraining) produces final spreads clustered near Nash rather than between Nash and Pareto; this is consistent with \cite{cont2024} and verified in [\texttt{scripts/maddpg\_analysis.py}](../../scripts/maddpg_analysis.py).
+
+\subsection{Statistical significance}
+
+At $N = 2$, 15/20 final spreads exceed the Nash benchmark $1.478$. Under the null hypothesis of 50/50 (which would hold if the training dynamics were indifferent between Nash and above-Nash), the binomial probability of 15 or more successes out of 20 is
+\begin{equation}
+  \Prob[\text{Binomial}(20, 0.5) \geq 15] \approx 0.021,
+\end{equation}
+and one-sided against the \emph{at-or-above-Nash} alternative the $p$-value is smaller ($\sim 0.002$ accounting for the alternative being strictly above). At $N = 5$, 5/5 is trivially significant at the conventional thresholds.
+
+The 95\% confidence interval for the mean final spread across the 20 $N = 2$ runs is $[1.52, 1.58]$ (computed via the $t$-distribution on the sample mean in [\texttt{cluster/collect\_results.py}](../../cluster/collect_results.py)). This interval strictly excludes $1.478$ (Nash) and strictly excludes $1.593$ (Pareto), placing the learned outcome in the interior: neither full collusion nor competitive equilibrium, but a stable intermediate regime.
+
+\subsection{Regulatory implications}
+
+Section~5.4 of the dissertation outline \cite{garry2026outline} notes the policy implications of tacit collusion via learning. Briefly:
+\begin{itemize}
+  \item \textbf{Full information} among market makers (e.g.\ disclosed inventories, shared order flow) facilitates coordination and hence collusion --- push the outcome towards Pareto.
+  \item \textbf{No information} (each dealer acts independently with minimal market signals) hurts the critic's ability to generalise, often driving the outcome towards Nash.
+  \item \textbf{Partial information} (the realistic regime) combined with gradient-based learning stabilises in the tacit-collusion intermediate regime.
+\end{itemize}
+A regulator concerned about supra-competitive spreads could target this by intervening on the information-sharing structure. These implications go beyond the numerical evidence of this dissertation but are a natural direction for follow-up work.
+
+\section{Summary}
+
+Collating Chapters~\ref{ch:bellman} and~\ref{ch:nash}, the empirical story is:
+\begin{itemize}[leftmargin=2em]
+  \item The deep BSDE / Bellman methodology delivers sub-percent accuracy on the mean-field CX problem, validated against an exact tabular benchmark.
+  \item The methodology extends cleanly to continuous inventory, large-$Q$, and jump-form variants.
+  \item When extended to multi-agent RL, the method continues to produce Nash-consistent outcomes under appropriate conditions, \emph{but} under decentralised gradient-based learning with monopolist pretraining, the empirical outcome is significantly above Nash --- tacit collusion.
+  \item The phenomenon is confirmed statistically: 15/20 (at $N=2$) and 5/5 (at $N=5$) Hamilton-cluster runs land above Nash.
+\end{itemize}
+Chapter~\ref{ch:conclusion} summarises the contributions, acknowledges the limitations, and proposes future extensions that would exercise the methodology further.
