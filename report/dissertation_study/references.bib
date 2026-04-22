@@ -1,3 +1,13 @@
+% References for the dissertation.
+% Entries marked with a source comment (% Ariadne: <id>) are tracked in the
+% local Ariadne literature-review library.  Bibkeys are stable and should
+% be used throughout the dissertation, the companion preprint, and the
+% literature review.
+
+% =========================================================
+%  Textbooks and foundations
+% =========================================================
+
 @book{applebaum2009,
   author    = {David Applebaum},
   title     = {L{\'e}vy Processes and Stochastic Calculus},
@@ -6,73 +16,64 @@
   edition   = {2nd},
 }
 
-@article{avellaneda2008,
-  author    = {Marco Avellaneda and Sasha Stoikov},
-  title     = {High-frequency trading in a limit order book},
-  journal   = {Quantitative Finance},
-  volume    = {8},
-  number    = {3},
-  pages     = {217--224},
-  year      = {2008},
-}
-
-@article{barles1997,
-  author    = {Guy Barles and Rainer Buckdahn and \'Etienne Pardoux},
-  title     = {Backward stochastic differential equations and integral-partial differential equations},
-  journal   = {Stochastics and Stochastic Reports},
-  volume    = {60},
-  number    = {1--2},
-  pages     = {57--83},
-  year      = {1997},
-}
-
-@article{beck2019,
-  author    = {Christian Beck and Weinan E and Arnulf Jentzen},
-  title     = {Machine learning approximation algorithms for high-dimensional fully nonlinear partial differential equations and second-order backward stochastic differential equations},
-  journal   = {Journal of Nonlinear Science},
-  volume    = {29},
-  number    = {4},
-  pages     = {1563--1619},
-  year      = {2019},
-}
-
-@article{briand2006,
-  author    = {Philippe Briand and Ying Hu},
-  title     = {{BSDE} with quadratic growth and unbounded terminal value},
-  journal   = {Probability Theory and Related Fields},
-  volume    = {136},
-  number    = {4},
-  pages     = {604--618},
-  year      = {2006},
-}
-
-@article{calvano2020,
-  author    = {Emilio Calvano and Giacomo Calzolari and Vincenzo Denicol\`o and Sergio Pastorello},
-  title     = {Artificial intelligence, algorithmic pricing, and collusion},
-  journal   = {American Economic Review},
-  volume    = {110},
-  number    = {10},
-  pages     = {3267--3297},
-  year      = {2020},
-}
-
-@book{carmona2018,
-  author    = {Ren\'e Carmona and Fran\c{c}ois Delarue},
-  title     = {Probabilistic Theory of Mean Field Games with Applications},
-  volume    = {I \& II},
+@book{karatzas1991,
+  author    = {Ioannis Karatzas and Steven E. Shreve},
+  title     = {Brownian Motion and Stochastic Calculus},
   publisher = {Springer},
-  year      = {2018},
-  series    = {Probability Theory and Stochastic Modelling},
+  year      = {1991},
+  edition   = {2nd},
+  series    = {Graduate Texts in Mathematics},
+  volume    = {113},
 }
 
-@article{cont2024,
-  author    = {Rama Cont and Wei Xiong},
-  title     = {Dynamics of market making algorithms in dealer markets: Learning and tacit collusion},
-  journal   = {Mathematical Finance},
-  volume    = {34},
+@book{oksendal1998,
+  author    = {Bernt {\O}ksendal},
+  title     = {Stochastic Differential Equations: An Introduction with Applications},
+  publisher = {Springer-Verlag},
+  year      = {1998},
+  edition   = {5th},
+}
+
+@book{kloeden1992,
+  author    = {Peter E. Kloeden and Eckhard Platen},
+  title     = {Numerical Solution of Stochastic Differential Equations},
+  publisher = {Springer-Verlag},
+  year      = {1992},
+  series    = {Applications of Mathematics},
+  volume    = {23},
+}
+
+@book{kloeden1994,
+  author    = {Peter E. Kloeden and Eckhard Platen and Henri Schurz},
+  title     = {Numerical Solution of {SDE} Through Computer Experiments},
+  publisher = {Springer-Verlag},
+  year      = {1994},
+  series    = {Universitext},
+}
+
+% =========================================================
+%  BSDE theory — classical
+% =========================================================
+
+@article{feng2018,
+  author    = {Chunrong Feng and Xince Wang and Huaizhong Zhao},
+  title     = {Quasi-linear {PDE}s and forward-backward stochastic differential equations: weak solutions},
+  journal   = {Journal of Differential Equations},
+  volume    = {264},
   number    = {2},
-  pages     = {467--521},
-  year      = {2024},
+  pages     = {959--1018},
+  year      = {2018},
+  doi       = {10.1016/j.jde.2017.09.030},
+}
+
+@article{pardoux1990,
+  author    = {\'Etienne Pardoux and Shige Peng},
+  title     = {Adapted solution of a backward stochastic differential equation},
+  journal   = {Systems \& Control Letters},
+  volume    = {14},
+  number    = {1},
+  pages     = {55--61},
+  year      = {1990},
 }
 
 @article{elkaroui1997,
@@ -85,25 +86,234 @@
   year      = {1997},
 }
 
-@misc{garry2026bsdeconnection,
-  author    = {Christian Garry},
-  title     = {The {C}ont--{X}iong dealer market as a {BSDEJ}: A theoretical note},
-  year      = {2026},
-  note      = {Internal note, see \texttt{report/bsde\_connection.tex} in the repository},
+@article{barles1997,
+  author    = {Guy Barles and Rainer Buckdahn and \'Etienne Pardoux},
+  title     = {Backward stochastic differential equations and integral-partial differential equations},
+  journal   = {Stochastics and Stochastic Reports},
+  volume    = {60},
+  number    = {1--2},
+  pages     = {57--83},
+  year      = {1997},
 }
 
-@misc{garry2026outline,
-  author    = {Christian Garry},
-  title     = {Dissertation outline: Numerical analysis of mean-field {BSDE}s},
-  year      = {2026},
-  note      = {Internal outline, see \texttt{report/dissertation\_outline.md} in the repository},
+@article{briand2006,
+  author    = {Philippe Briand and Ying Hu},
+  title     = {{BSDE} with quadratic growth and unbounded terminal value},
+  journal   = {Probability Theory and Related Fields},
+  volume    = {136},
+  number    = {4},
+  pages     = {604--618},
+  year      = {2006},
 }
 
-@misc{garry2026preprint2,
-  author    = {Christian Garry},
-  title     = {When does mean-field structure matter? Distribution dependence, representation collapse, and architectural constraints in deep {BSDE} market-making},
-  year      = {2026},
-  note      = {Companion preprint, included as \texttt{paper.pdf} in the repository},
+@article{kobylanski2000,
+  author    = {Magdalena Kobylanski},
+  title     = {Backward stochastic differential equations and partial differential equations with quadratic growth},
+  journal   = {Annals of Probability},
+  volume    = {28},
+  number    = {2},
+  pages     = {558--602},
+  year      = {2000},
+}
+
+@incollection{peng2004,
+  author    = {Shige Peng},
+  title     = {Nonlinear expectations, nonlinear evaluations and risk measures},
+  booktitle = {Stochastic Methods in Finance},
+  series    = {Lecture Notes in Mathematics},
+  volume    = {1856},
+  publisher = {Springer},
+  year      = {2004},
+  pages     = {165--253},
+}
+
+@article{jacod1976,
+  author    = {Jean Jacod},
+  title     = {Un th\'eor\`eme de repr\'esentation pour les martingales discontinues},
+  journal   = {Zeitschrift f\"ur Wahrscheinlichkeitstheorie und Verwandte Gebiete},
+  volume    = {34},
+  number    = {3},
+  pages     = {225--244},
+  year      = {1976},
+}
+
+@article{tang1994,
+  author    = {Shanjian Tang and Xunjing Li},
+  title     = {Necessary conditions for optimal control of stochastic systems with random jumps},
+  journal   = {SIAM Journal on Control and Optimization},
+  volume    = {32},
+  number    = {5},
+  pages     = {1447--1475},
+  year      = {1994},
+}
+
+@article{pengxu2011,
+  author    = {Shige Peng and Mingyu Xu},
+  title     = {Numerical algorithms for backward stochastic differential equations with 1-{D} {B}rownian motion: Convergence and simulations},
+  journal   = {ESAIM: Mathematical Modelling and Numerical Analysis},
+  volume    = {45},
+  number    = {2},
+  pages     = {335--360},
+  year      = {2011},
+  doi       = {10.1051/m2an/2010059},
+}
+
+% =========================================================
+%  Mean-field BSDEs, MFGs and master equation
+% =========================================================
+
+@article{buckdahn2009viscosity,
+  author    = {Rainer Buckdahn and Juan Li and Shige Peng},
+  title     = {Mean-field backward stochastic differential equations and related partial differential equations},
+  journal   = {Stochastic Processes and their Applications},
+  volume    = {119},
+  number    = {10},
+  pages     = {3133--3154},
+  year      = {2009},
+}
+
+@article{buckdahn2009limit,
+  author    = {Rainer Buckdahn and Boualem Djehiche and Juan Li and Shige Peng},
+  title     = {Mean-field backward stochastic differential equations: A limit approach},
+  journal   = {The Annals of Probability},
+  volume    = {37},
+  number    = {4},
+  pages     = {1524--1565},
+  year      = {2009},
+  doi       = {10.1214/08-AOP442},
+}
+
+@article{cardaliaguet2012,
+  author    = {Pierre Cardaliaguet and Jean-Michel Lasry and Pierre-Louis Lions and Alessio Porretta},
+  title     = {Long time average of mean field games},
+  journal   = {Networks and Heterogeneous Media},
+  volume    = {7},
+  number    = {2},
+  pages     = {279--301},
+  year      = {2012},
+  doi       = {10.3934/nhm.2012.7.279},
+}
+
+@article{carmona2013,
+  author    = {Ren\'e Carmona and Fran\c{c}ois Delarue},
+  title     = {Probabilistic analysis of mean-field games},
+  journal   = {SIAM Journal on Control and Optimization},
+  volume    = {51},
+  number    = {4},
+  pages     = {2705--2734},
+  year      = {2013},
+}
+
+@article{carmona2016,
+  author    = {Ren\'e Carmona and Fran\c{c}ois Delarue and Daniel Lacker},
+  title     = {Mean field games with common noise},
+  journal   = {The Annals of Probability},
+  volume    = {44},
+  number    = {6},
+  pages     = {3740--3803},
+  year      = {2016},
+}
+
+@article{carmona2017,
+  author    = {Ren\'e Carmona and Fran\c{c}ois Delarue and Daniel Lacker},
+  title     = {Mean field games of timing and models for bank runs},
+  journal   = {Applied Mathematics \& Optimization},
+  volume    = {76},
+  number    = {1},
+  pages     = {217--260},
+  year      = {2017},
+  doi       = {10.1007/s00245-017-9435-z},
+}
+
+@book{carmona2018,
+  author    = {Ren\'e Carmona and Fran\c{c}ois Delarue},
+  title     = {Probabilistic Theory of Mean Field Games with Applications},
+  volume    = {I \& II},
+  publisher = {Springer},
+  year      = {2018},
+  series    = {Probability Theory and Stochastic Modelling},
+  note      = {Vol.~I: Mean Field FBSDEs, Control, and Games.  Vol.~II: Mean Field Games with Common Noise and Master Equations.},
+}
+
+@article{chassagneux2014,
+  author    = {Jean-Fran\c{c}ois Chassagneux and Dan Crisan and Fran\c{c}ois Delarue},
+  title     = {A probabilistic approach to classical solutions of the master equation for large population equilibria},
+  journal   = {M\'emoires de la Soci\'et\'e Math\'ematique de France},
+  note      = {Also appears as AMS Memoirs, 2022},
+  year      = {2014},
+  doi       = {10.1090/memo/1379},
+}
+
+@article{bayraktar2018,
+  author    = {Erhan Bayraktar and Andrea Cosso and Huy{\^e}n Pham},
+  title     = {Randomized dynamic programming principle and {F}eynman--{K}ac representation for optimal control of {M}c{K}ean--{V}lasov dynamics},
+  journal   = {Transactions of the American Mathematical Society},
+  volume    = {370},
+  number    = {3},
+  pages     = {2115--2160},
+  year      = {2018},
+}
+
+@article{wuzhang2020,
+  author    = {Cong Wu and Jianfeng Zhang},
+  title     = {Viscosity solutions to parabolic master equations and {M}c{K}ean--{V}lasov {SDE}s with closed-loop controls},
+  journal   = {The Annals of Applied Probability},
+  volume    = {30},
+  number    = {2},
+  pages     = {936--986},
+  year      = {2020},
+  doi       = {10.1214/19-AAP1521},
+}
+
+@article{delarue2019,
+  author    = {Fran\c{c}ois Delarue and Daniel Lacker and Kavita Ramanan},
+  title     = {From the master equation to mean field game limit theory: a central limit theorem},
+  journal   = {Electronic Journal of Probability},
+  volume    = {24},
+  number    = {51},
+  pages     = {1--54},
+  year      = {2019},
+}
+
+@article{zhang2023,
+  author    = {Jianfeng Zhang},
+  title     = {Stochastic recursive control problems of {M}c{K}ean--{V}lasov type},
+  journal   = {arXiv preprint arXiv:2307.00983},
+  year      = {2023},
+}
+
+@article{sznitman1991,
+  author    = {Alain-Sol Sznitman},
+  title     = {Topics in propagation of chaos},
+  journal   = {\'Ecole d'\'Et\'e de Probabilit\'es de Saint-Flour XIX--1989, Lecture Notes in Mathematics},
+  volume    = {1464},
+  pages     = {165--251},
+  year      = {1991},
+  publisher = {Springer},
+}
+
+@book{achdou2020,
+  author    = {Yves Achdou and Pierre Cardaliaguet and Fran\c{c}ois Delarue and Alessio Porretta and Filippo Santambrogio},
+  title     = {Mean Field Games and Applications: Numerical Aspects},
+  publisher = {Springer},
+  year      = {2020},
+  series    = {Lecture Notes in Mathematics},
+  volume    = {2281},
+  doi       = {10.1007/978-3-030-59837-2},
+}
+
+% =========================================================
+%  Deep BSDE and deep MFG numerics
+% =========================================================
+
+@article{ehanjentzen2017,
+  author    = {Weinan E and Jiequn Han and Arnulf Jentzen},
+  title     = {Deep learning-based numerical methods for high-dimensional parabolic partial differential equations and backward stochastic differential equations},
+  journal   = {Communications in Mathematics and Statistics},
+  volume    = {5},
+  number    = {4},
+  pages     = {349--380},
+  year      = {2017},
 }
 
 @article{han2018,
@@ -114,6 +324,18 @@
   number    = {34},
   pages     = {8505--8510},
   year      = {2018},
+  doi       = {10.1073/pnas.1718942115},
+}
+
+@article{beck2019,
+  author    = {Christian Beck and Weinan E and Arnulf Jentzen},
+  title     = {Machine learning approximation algorithms for high-dimensional fully nonlinear partial differential equations and second-order backward stochastic differential equations},
+  journal   = {Journal of Nonlinear Science},
+  volume    = {29},
+  number    = {4},
+  pages     = {1563--1619},
+  year      = {2019},
+  doi       = {10.1007/s00332-018-9525-3},
 }
 
 @article{han2020,
@@ -128,7 +350,7 @@
 
 @article{han2022,
   author    = {Jiequn Han and Ruimeng Hu and Jihao Long},
-  title     = {Learning high-dimensional {McKean--Vlasov} forward--backward stochastic differential equations with general distribution dependence},
+  title     = {Learning high-dimensional {M}c{K}ean--{V}lasov forward--backward stochastic differential equations with general distribution dependence},
   journal   = {SIAM Journal on Numerical Analysis},
   volume    = {60},
   number    = {4},
@@ -136,42 +358,125 @@
   year      = {2022},
 }
 
+@article{wang2023,
+  author    = {Wansheng Wang and Jie Wang and Jinping Li and Dongya Wang and Mengnan Li},
+  title     = {Deep learning numerical methods for high-dimensional fully nonlinear {PIDE}s and coupled {FBSDE}s with jumps},
+  journal   = {arXiv preprint arXiv:2301.12895},
+  year      = {2023},
+  doi       = {10.48550/arXiv.2301.12895},
+  note      = {Extends deep {BSDE} to jump-diffusion with compensated {P}oisson random measure.},
+}
+
+@article{carmona2019,
+  author    = {Ren\'e Carmona and Mathieu Lauri{\`e}re},
+  title     = {Convergence analysis of machine learning algorithms for the numerical solution of mean field control and games},
+  journal   = {The Annals of Applied Probability},
+  year      = {2019},
+  note      = {Also arXiv:1908.01613},
+}
+
+@article{guo2023,
+  author    = {Xin Guo and Anran Hu and Renyuan Xu and Junzi Zhang},
+  title     = {A general framework for learning mean-field games},
+  journal   = {Mathematics of Operations Research},
+  year      = {2023},
+}
+
+@incollection{germain2022,
+  author    = {Maximilien Germain and Huy{\^e}n Pham and Xavier Warin},
+  title     = {Neural networks-based algorithms for stochastic control and {PDE}s in finance},
+  booktitle = {Machine Learning and Data Sciences for Financial Markets},
+  publisher = {Cambridge University Press},
+  year      = {2022},
+}
+
+@article{hure2020,
+  author    = {C{\^o}me Hur{\'e} and Huy{\^e}n Pham and Achref Bachouch and Nicolas Langren{\'e}},
+  title     = {Deep neural networks algorithms for stochastic control problems on finite horizon, part {I}: convergence analysis},
+  journal   = {SIAM Journal on Numerical Analysis},
+  year      = {2020},
+}
+
+% =========================================================
+%  MFGs with common noise, signatures, and cutting-edge MV-FBSDE
+% =========================================================
+
 @misc{hu2025,
-  author    = {Ruimeng Hu and Terry Lyons and others},
-  title     = {Deep signature methods for common-noise mean-field {BSDE}s},
+  author    = {Ruimeng Hu and Botao Jin and Mathieu Lauri{\`e}re},
+  title     = {Deep signature approach for {M}c{K}ean--{V}lasov {FBSDE}s in a random environment},
   year      = {2025},
-  note      = {Preprint / working paper},
+  note      = {Preprint},
 }
 
-@article{jacod1976,
-  author    = {Jean Jacod},
-  title     = {Un th\'eor\`eme de repr\'esentation pour les martingales discontinues},
-  journal   = {Zeitschrift f\"ur Wahrscheinlichkeitstheorie und Verwandte Gebiete},
-  volume    = {34},
+% =========================================================
+%  Dealer markets, LOB simulation, and multi-agent RL
+% =========================================================
+
+@article{avellaneda2008,
+  author    = {Marco Avellaneda and Sasha Stoikov},
+  title     = {High-frequency trading in a limit order book},
+  journal   = {Quantitative Finance},
+  volume    = {8},
   number    = {3},
-  pages     = {225--244},
-  year      = {1976},
+  pages     = {217--224},
+  year      = {2008},
 }
 
-@book{karatzas1991,
-  author    = {Ioannis Karatzas and Steven E. Shreve},
-  title     = {Brownian Motion and Stochastic Calculus},
-  publisher = {Springer},
-  year      = {1991},
-  edition   = {2nd},
-  series    = {Graduate Texts in Mathematics},
-  volume    = {113},
-}
-
-@article{kobylanski2000,
-  author    = {Magdalena Kobylanski},
-  title     = {Backward stochastic differential equations and partial differential equations with quadratic growth},
-  journal   = {Annals of Probability},
-  volume    = {28},
+@article{cont2024,
+  author    = {Rama Cont and Wei Xiong},
+  title     = {Dynamics of market making algorithms in dealer markets: Learning and tacit collusion},
+  journal   = {Mathematical Finance},
+  volume    = {34},
   number    = {2},
-  pages     = {558--602},
-  year      = {2000},
+  pages     = {467--521},
+  year      = {2024},
+  doi       = {10.1111/mafi.12401},
 }
+
+@inproceedings{karpe2020,
+  author    = {Michael Karpe and Jin Fang and Zhongyao Ma and Chen Wang},
+  title     = {Multi-agent reinforcement learning in a realistic limit order book market simulation},
+  booktitle = {ACM International Conference on AI in Finance},
+  year      = {2020},
+  doi       = {10.1145/3383455.3422570},
+}
+
+@article{shi2024,
+  author    = {Zijian Shi and John Cartlidge},
+  title     = {Neural stochastic agent-based limit order book simulation with neural point process and diffusion probabilistic model},
+  journal   = {Intelligent Systems in Accounting, Finance and Management},
+  year      = {2024},
+  doi       = {10.1002/isaf.1553},
+}
+
+@article{navarro2025,
+  author    = {Alvaro Navarro-Rubio and Alejandro Lage-Castellanos},
+  title     = {From informal markets to limit order book dynamics: a mean field connection},
+  journal   = {arXiv preprint},
+  year      = {2025},
+}
+
+@misc{cheridito2025,
+  author    = {Patrick Cheridito and Jean-Loup Dupret and Zhe Wu},
+  title     = {{ABIDES-MARL}: A Multi-Agent Reinforcement Learning Environment for Endogenous Price Formation and Execution in a Limit Order Book},
+  year      = {2025},
+  note      = {arXiv:2511.02016},
+  doi       = {10.48550/arXiv.2511.02016},
+}
+
+@article{calvano2020,
+  author    = {Emilio Calvano and Giacomo Calzolari and Vincenzo Denicol\`o and Sergio Pastorello},
+  title     = {Artificial intelligence, algorithmic pricing, and collusion},
+  journal   = {American Economic Review},
+  volume    = {110},
+  number    = {10},
+  pages     = {3267--3297},
+  year      = {2020},
+}
+
+% =========================================================
+%  Neural network architecture references (used in Ch3)
+% =========================================================
 
 @inproceedings{lowe2017,
   author    = {Ryan Lowe and Yi Wu and Aviv Tamar and Jean Harb and Pieter Abbeel and Igor Mordatch},
@@ -185,16 +490,6 @@
   title     = {Spectral normalization for generative adversarial networks},
   booktitle = {International Conference on Learning Representations (ICLR)},
   year      = {2018},
-}
-
-@article{pardoux1990,
-  author    = {\'Etienne Pardoux and Shige Peng},
-  title     = {Adapted solution of a backward stochastic differential equation},
-  journal   = {Systems \& Control Letters},
-  volume    = {14},
-  number    = {1},
-  pages     = {55--61},
-  year      = {1990},
 }
 
 @inproceedings{perez2018,
@@ -211,36 +506,10 @@
   year      = {2014},
 }
 
-@article{sznitman1991,
-  author    = {Alain-Sol Sznitman},
-  title     = {Topics in propagation of chaos},
-  journal   = {\'Ecole d'\'Et\'e de Probabilit\'es de Saint-Flour XIX--1989, Lecture Notes in Mathematics},
-  volume    = {1464},
-  pages     = {165--251},
-  year      = {1991},
-  publisher = {Springer},
-}
-
-@article{tang1994,
-  author    = {Shanjian Tang and Xunjing Li},
-  title     = {Necessary conditions for optimal control of stochastic systems with random jumps},
-  journal   = {SIAM Journal on Control and Optimization},
-  volume    = {32},
-  number    = {5},
-  pages     = {1447--1475},
-  year      = {1994},
-}
-
-@misc{wang2023,
-  author    = {Yanchun Wang and others},
-  title     = {Deep backward stochastic differential equation methods for jump-diffusions with compensated martingale correction},
-  year      = {2023},
-  note      = {Preprint},
-}
-
 @inproceedings{zaheer2017,
   author    = {Manzil Zaheer and Satwik Kottur and Siamak Ravanbakhsh and Barnab\'as P\'oczos and Ruslan Salakhutdinov and Alexander J. Smola},
   title     = {Deep sets},
   booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
   year      = {2017},
 }
+

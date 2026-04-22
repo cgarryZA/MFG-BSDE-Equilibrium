@@ -1,0 +1,42 @@
+% Standalone compile wrapper for the full literature review.
+% Build: pdflatex -> bibtex -> pdflatex -> pdflatex
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage[longnamesfirst]{natbib}
+\bibliographystyle{plainnat}
+
+\title{Literature Review\\
+  \large Deep Learning for Mean-Field BSDEs with Jumps in Multi-Agent Dealer Markets}
+\author{Christian Garry\\Durham University}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+This review establishes the probabilistic and computational
+foundations required to solve for Nash equilibria, and to detect
+tacit collusion, in the Cont--Xiong (2024) dealer market-making
+game via deep BSDE methods for jump-diffusion processes.
+Forty-two papers are organised across five sections --- BSDE and
+mean-field game theory, the McKean--Vlasov FBSDE framework,
+deep-learning numerics, empirical dealer-market applications, and
+research frontier --- and synthesised under a single arc:
+established knowledge, outstanding gaps, recent advances, and the
+motivation for the contributions of this thesis.
+\end{abstract}
+
+\tableofcontents
+\vspace{1em}
+
+\input{lit_review_full.tex}
+
+\bibliography{dissertation_study/references}
+
+\end{document}

@@ -1,0 +1,433 @@
+% Literature Review and Project Plan (MiSCADA summative submission).
+% 8-page limit. Due 1 May 2026.
+% Companion document: report/lit_review_standalone.pdf (full lit review, ~10 pages)
+% which remains the complete reference treatment.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[margin=2cm]{geometry}
+\usepackage{hyperref}
+\usepackage[longnamesfirst]{natbib}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{pgfgantt}
+\usepackage{xcolor}
+\bibliographystyle{plainnat}
+
+\setlength{\parskip}{3pt}
+\setlength{\parindent}{12pt}
+
+\title{\vspace{-2em}Literature Review and Project Plan \\[2pt]
+  \large Deep BSDE Methods for Multi-Agent Dealer Markets}
+\author{Christian Garry \\ MSc MISCADA, Durham University}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1em}
+
+\begin{abstract}
+\noindent
+The Cont--Xiong (2024) multi-agent dealer market defines a coupled
+system of Hamilton--Jacobi--Bellman equations whose Nash equilibrium
+is equivalent to the solution of a mean-field forward-backward
+stochastic differential equation (FBSDE) with jumps.  This project
+studies that FBSDE system computationally, using deep BSDE
+methods as the numerical tool.  The aim is threefold: (i) to
+approximate the $N$-player Nash equilibrium via a deep BSDE solver
+and quantify its approximation error and convergence behaviour,
+extending the curse-of-dimensionality-free theory of \citet{han2022}
+to the jump-augmented setting; (ii) to characterise the conditions
+under which naive deep-learning parameterisations fail to
+represent the mean-field coupling of the HJB system, and to
+design parameterisations that do; and (iii) to study the spread
+gap $|S_{\mathrm{MADDPG}} - S_{\mathrm{Nash}}|$ as a quantitative
+statistic for deviations of multi-agent reinforcement-learning
+dynamics from the mean-field Nash equilibrium.  A sequential set of basic, intermediate, and
+advanced goals, with an explicit test harness, structures the
+13-week project timeline.
+\end{abstract}
+
+\vspace{-0.5em}
+
+% =====================================================================
+\section{Scientific Background}\label{sec:background}
+
+Multi-agent dealer market-making sits at an uncomfortable intersection
+in the mathematical literature.  The $N$-player stochastic-differential
+game of \citet{cont2024} models competing market makers posting bid and
+ask quotes in a continuous-time dealer market; executions arrive as
+compensated point processes, and Nash equilibrium is characterised by
+a coupled system of Hamilton--Jacobi--Bellman (HJB) equations.  The
+game admits \emph{in principle} a probabilistic treatment via backward
+stochastic differential equations (BSDEs) and mean-field games (MFGs),
+and a numerical treatment via deep-learning methods.  \emph{In
+practice}, no existing framework simultaneously handles all three
+ingredients that the model requires:
+\citet{han2022} give a curse-of-dimensionality-free deep-BSDE method
+for McKean--Vlasov forward-backward SDEs but without jumps;
+\citet{wang2023} extend deep BSDE to jump-diffusion processes but
+without mean-field coupling; and \citet{cont2024} solve their own
+game empirically via multi-agent deep deterministic policy gradient
+(MADDPG) but without the equilibrium grounding or interpretable
+gradients that a principled method would supply.  Combining all three
+---~jump-augmented BSDEs, mean-field coupling, and deep-learning
+numerics~--- into a single computational method for a realistic market
+microstructure model is the gap this project addresses.
+
+Concretely, each dealer controls the bid/ask spread $\delta_t$ over
+their quote, and the execution probability in response to a random
+order is governed by the softmax-type kernel of \citet{cont2024}
+(their eq.~58),
+\begin{equation}\label{eq:cx-exec}
+  f_a^i(\delta, s) \;=\;
+  \tfrac{1}{N}\,\sigma(-\delta)\,
+  \frac{e^{s}}{1 + e^{\,\delta + s}},
+\end{equation}
+where $\sigma(\cdot)$ is the logistic sigmoid and $s = S/\kappa$ is
+the market-price scale.  Nash equilibrium is the fixed point of the
+coupled Bellman system, and existence follows from a Brouwer
+fixed-point argument; what is missing is a scalable numerical
+method that respects both the mean-field limit and the
+jump-diffusion structure.
+
+
+% =====================================================================
+\section{Related Work}\label{sec:related}
+
+The literature divides naturally into three pillars.
+
+\paragraph{BSDEs and mean-field games.}
+\citet{pardoux1990} proved existence and uniqueness of adapted BSDE
+solutions under Lipschitz hypotheses, providing the bedrock on which
+\citet{elkaroui1997} built the BSDE formulation of derivative pricing
+and risk management.  \citet{feng2018} extended the PDE/FBSDE
+correspondence to the \emph{weak}-solution setting for quasi-linear
+PDEs --- directly relevant to the Cont--Xiong HJB system, whose
+coefficients are quasi-linear rather than classical.  A BSDE on $[0,T]$ is a pair of adapted
+processes $(Y_t, Z_t)$ satisfying
+\begin{equation}\label{eq:bsde}
+  Y_t \;=\; \xi + \int_t^T f(s, Y_s, Z_s)\,ds - \int_t^T Z_s \,dW_s,
+\end{equation}
+with $\xi$ a terminal condition; the $Z$-process is the object that
+deep BSDE methods learn.  \citet{peng2004} established the link
+between BSDEs and nonlinear expectations, placing $Z$ in the role
+of a risk-sensitivity functional.  Mean-field games were introduced
+by Lasry--Lions and Huang--Caines--Malham\'e; \citet{carmona2013}
+and the two-volume monograph of \citet{carmona2018} supply the
+probabilistic treatment via McKean--Vlasov FBSDEs, and
+\citet{buckdahn2009viscosity, buckdahn2009limit} establish the
+MF-BSDE / non-local PDE equivalence and the $1/\sqrt{N}$ propagation
+of chaos rate that justifies mean-field approximation at finite
+$N$.  The jump-augmented case has a parallel classical theory
+\citep{tang1994, barles1997} on which any deep BSDEJ method must
+rest.
+
+\paragraph{Deep BSDE numerics.}
+The curse of dimensionality in classical BSDE schemes
+\citep{kloeden1992, pengxu2011} --- which require
+conditional-expectation estimation scaling as $O(M^d)$ in state
+dimension --- was broken by the deep BSDE method of \citet{han2018},
+which parameterises the gradient $Z_t$ by a neural network and trains
+on the terminal-loss $|Y_T - \xi|^2$.  \citet{beck2019} extended
+this to fully nonlinear second-order BSDEs.  For mean-field problems,
+\citet{han2022} proved curse-of-dimensionality-free convergence for
+McKean--Vlasov FBSDEs via a fictitious-play decomposition
+\citep{guo2023}, with the caveat that the proof requires Lasry--Lions
+monotonicity on the coupling term --- a condition that for the
+Cont--Xiong kernel~\eqref{eq:cx-exec} can only be verified empirically
+along a one-dimensional slice of the measure space.  The extension
+to jump-diffusion processes and forward BSDEs with jumps (FBSDEJs) is
+due to \citet{wang2023}; the BSDEJ numerical literature is as yet
+thinly cited, and any downstream application must do its own due
+diligence on convergence and on the compensated-martingale correction.
+
+\paragraph{Structural pathologies of deep approximations to the
+MFG HJB system.}
+\citet{germain2022} catalogue vanishing gradients and terminal-scale
+sensitivity for the canonical deep BSDE.  Three further failure
+modes are specific to the mean-field and jump-augmented setting
+and are structural --- each corresponds to a specific way in
+which the neural-network approximation fails to represent the
+mean-field HJB system it is supposed to solve, rather than a
+generic optimisation difficulty.
+
+\emph{(i) Loss of measurable $\mu$-dependence via BatchNorm.}
+For a mean-field game the value function is $V(t, x, \mu_t)$ and
+the HJB equation it satisfies is explicitly $\mu$-dependent.  When a
+broadcast population statistic $m_t$ (a low-dimensional surrogate
+for $\mu_t$) is included as a network input and passed through a
+BatchNorm layer, normalisation across the batch dimension maps
+the constant feature to zero, so the parameterised value function
+becomes measurable with respect to own-state only.  The
+discretised system effectively solves a single-agent HJB, not
+the MFG.
+
+\emph{(ii) Degenerate fixed points of symmetric-input DeepSets.}
+Permutation-invariant pooling of opponent states is the
+architecturally correct way to encode the empirical distribution.
+Under symmetric initialisation and symmetric inputs, however,
+DeepSets admits degenerate minima in which the map from
+population state to policy collapses to a constant.  The effect
+is operationally indistinguishable from (i): the approximation
+again loses measurable dependence on $\mu$.
+
+\emph{(iii) Underdetermined terminal loss (``generator bypass'').}
+The deep BSDE terminal loss $|Y_T - g(q_T)|^2$ is a single scalar
+constraint on the network-parameterised $U$-process.  Many
+$U$-profiles satisfy it in expectation, but only one corresponds
+to the Bellman-optimal $U^\star(q) = V(q-1) - V(q)$ of the
+underlying HJB system.  Without a prior, Adam selects whichever
+basin is numerically easiest, and the method can converge to a
+self-consistent fixed point of the BSDE discretisation that does
+not solve the HJB --- the spread profile extracted from such a
+$U$ is not a best response to the population quote.
+
+Diagnosing and repairing these three pathologies is a core
+methodological contribution of the project.
+
+\paragraph{Multi-agent RL and tacit collusion.}
+\citet{cont2024} show via decentralised MADDPG that independently
+learning market-making algorithms converge to spreads strictly above
+the Nash equilibrium, a phenomenon termed \emph{tacit collusion}.
+Related MARL work on realistic limit-order-book simulators
+\citep{karpe2020, shi2024, cheridito2025} highlights fragility across
+market regimes.  The gap between MADDPG spreads and Nash,
+$|S_{\mathrm{MADDPG}} - S_{\mathrm{Nash}}|$, is a measurable
+signature of algorithmic collusion, but it has not been operationalised
+as a detector statistic --- which requires a BSDE-based Nash benchmark
+that is itself trusted.  Recent frontier work on common-noise
+MV-FBSDEs via path signatures \citep{hu2025} and on mean-field LOB
+embeddings \citep{navarro2025} defines the open problems beyond this
+project's scope.
+
+
+% =====================================================================
+\section{Research Question}\label{sec:question}
+
+\emph{What are the approximation error and convergence
+behaviour of a deep BSDE-with-jumps approximation to the
+$N$-player Nash equilibrium of the Cont--Xiong mean-field FBSDE,
+and what structural conditions on the neural parameterisation
+preserve the mean-field HJB coupling under that approximation?}
+Three sub-questions structure the investigation.  (Q1)~What is
+the approximation error $|S^{\text{neural}}_0 - S^{\text{Nash}}_0|$,
+and its scaling in $N$, for a jump-augmented deep BSDE solver
+applied to this model; in particular, is the error consistent
+with the $O(1/\sqrt{N})$ propagation-of-chaos rate of
+\citet{buckdahn2009limit}?  (Q2)~Which structural pathologies of
+the neural parameterisation (\S\ref{sec:related}) admit numerical
+fixed points that do not solve the underlying HJB system, and
+which architectural or regularisation choices eliminate them?
+(Q3)~How does the spread gap
+$|S_{\mathrm{MADDPG}} - S_{\mathrm{Nash}}|$ --- a quantitative
+statistic for deviation of multi-agent RL dynamics from the
+mean-field Nash equilibrium --- behave across model parameters
+$(N, \lambda, \phi)$?
+
+
+% =====================================================================
+\section{Anticipated Outcomes}\label{sec:outcomes}
+
+Outcomes are stratified into three levels.  Tier~1 (basic) is
+essentially complete and de-risks the submission.  Tier~2
+(intermediate) is in progress with known technical challenges.
+Tier~3 (advanced) is genuinely speculative and is the ceiling,
+not the floor.
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.22\textwidth}
+                >{\raggedright\arraybackslash}p{0.62\textwidth}
+                >{\centering\arraybackslash}p{0.1\textwidth}}
+\toprule
+\textbf{Tier} & \textbf{Outcome} & \textbf{Risk} \\
+\midrule
+T1: Basic
+  & Exact $N$-player Nash equilibrium of Cont--Xiong via policy-evaluation
+    fictitious play on a discrete inventory grid, validated at
+    $N = 2, 5, 10, 25, 100$ against the Bellman fixed-point tolerance.
+    Shared-weight finite-horizon BSDEJ solver matching Nash spread at $q=0$
+    to within 1\% with fixed $\mathrm{avg\_comp}$.
+  & \textcolor{green!50!black}{Low} \\[2pt]
+T1: Basic
+  & Pytest-level unit tests and regression tests for all solvers
+    (boundary-quote convention, compensated-martingale correction,
+    FOC optimality, propagation-of-chaos sanity).
+  & \textcolor{green!50!black}{Low} \\[2pt]
+\midrule
+T2: Intermediate
+  & Mean-field fictitious-play BSDEJ solver converging to Nash at
+    $N = 2, 5, 10$ with spread error $< 3\%$.  Requires resolving the
+    generator-bypass failure mode identified in \S\ref{sec:related}.
+  & \textcolor{orange}{Medium} \\[2pt]
+T2: Intermediate
+  & Empirical verification of $O(1/\sqrt{N})$ propagation of chaos
+    \citep{buckdahn2009limit} at $N \in \{2, 3, 5, 10, 25, 100, 5000\}$
+    via exact solver, and tightness of the bound for the neural solver.
+  & \textcolor{orange}{Medium} \\[2pt]
+T2: Intermediate
+  & Architecture ablation study (ReLU vs.\ Tanh vs.\ GELU; shared vs.\
+    per-timestep networks; DeepSets vs.\ mean-pooling) quantifying each
+    failure mode in \S\ref{sec:related}.
+  & \textcolor{green!50!black}{Low} \\[2pt]
+\midrule
+T3: Advanced
+  & Continuous-inventory diffusion BSDE solver with $Z \neq 0$,
+    learning $Z_t = \sigma_q\,\partial_q V$ genuinely rather than the
+    pure-jump degenerate case.
+  & \textcolor{red!70!black}{High} \\[2pt]
+T3: Advanced
+  & MADDPG reproduction of \citet{cont2024} and quantitative
+    operationalisation of the spread gap
+    $|S_{\mathrm{MADDPG}} - S_{\mathrm{Nash}}|$ as a collusion
+    detector across a parameter sweep in $(N, \lambda, \phi)$.
+  & \textcolor{red!70!black}{High} \\[2pt]
+T3: Advanced
+  & Common-noise extension via path-signature conditioning
+    \citep{hu2025}; multi-asset extension ($K = 2, 3, 5$) demonstrating
+    genuine curse-of-dimensionality benefit over the exact solver.
+  & \textcolor{red!70!black}{High} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Tier~1 is essentially complete and provides a fall-back position
+should the more ambitious components prove intractable.  Tier~2
+contains the principal research content of the project.  Tier~3
+represents original extensions that may or may not be achievable
+within the available timeframe; they are reported in the
+dissertation if completed, and identified as clearly defined open
+problems if not.
+
+
+% =====================================================================
+\section{Project Time Plan}\label{sec:plan}
+
+The project runs from project allocation (January 2026, completed)
+through submission on 4 September 2026.  The core dissertation phase
+runs 27 April -- 26 June 2026, with July--August reserved for
+write-up.  A Gantt summary of the remaining timeline is below.
+
+\begin{center}
+\begin{ganttchart}[
+    x unit=0.55cm,
+    y unit title=0.65cm,
+    y unit chart=0.55cm,
+    hgrid, vgrid,
+    title label font=\footnotesize,
+    bar label font=\scriptsize,
+    milestone label font=\scriptsize,
+    group label font=\scriptsize\bfseries,
+    title height=1,
+    bar height=.6,
+    group height=.6
+]{1}{19}
+\gantttitle{April}{2}
+\gantttitle{May}{4}
+\gantttitle{June}{5}
+\gantttitle{July}{4}
+\gantttitle{Aug}{4}\\
+\gantttitlelist{1,...,19}{1}\\
+\ganttgroup{T1 (done)}{1}{1} \\
+\ganttbar{Exact Nash + BSDEJ baseline}{1}{1} \\
+\ganttgroup{Submission \& feedback}{1}{3} \\
+\ganttmilestone{Lit review \& plan due}{2} \\
+\ganttbar{Supervisor feedback}{2}{3} \\
+\ganttgroup{T2: MV-FP BSDEJ}{3}{8} \\
+\ganttbar{Fix generator bypass}{3}{5} \\
+\ganttbar{$N=2,5,10$ validation}{5}{7} \\
+\ganttbar{$1/\sqrt{N}$ rate verification}{6}{8} \\
+\ganttbar{Architecture ablations}{7}{9} \\
+\ganttgroup{T3: Advanced}{9}{13} \\
+\ganttbar{Continuous-$q$ diffusion BSDE}{9}{11} \\
+\ganttbar{MADDPG + collusion detector}{10}{13} \\
+\ganttbar{Multi-asset $K$-scaling}{11}{13} \\
+\ganttmilestone{Mid-May demo}{4} \\
+\ganttgroup{Write-up}{13}{18} \\
+\ganttbar{Method + results chapters}{13}{16} \\
+\ganttbar{Intro + conclusion + revisions}{15}{18} \\
+\ganttmilestone{Draft to supervisor}{17} \\
+\ganttbar{Final polish}{18}{19} \\
+\ganttmilestone{Submission}{19}
+\end{ganttchart}
+\end{center}
+
+Weekly numerals on the chart correspond to one-week periods with
+week~1 being 27~April 2026 (start of the core dissertation phase).
+Weekly supervisor meetings are scheduled throughout Term~3; the
+preliminary demonstration (MiSCADA milestone) is pencilled in for
+mid-May.  The draft handover to the supervisor is scheduled for
+the end of the third week of July to allow a round of feedback
+before the September deadline.
+
+
+% =====================================================================
+\section{Demonstrating Success}\label{sec:success}
+
+The project is a numerical one and admits quantitative validation at
+every tier.
+
+\paragraph{Ground-truth validation.}
+The classical fictitious-play Bellman solver provides an exact
+reference Nash equilibrium for discrete inventory and small $N$.
+All neural solvers are validated against this reference.  The
+principal success metric is the \emph{relative spread error at
+$q=0$},
+\begin{equation*}
+  \varepsilon_{\text{spread}} \;=\; \frac{|\,S^{\text{neural}}_0 - S^{\text{Nash}}_0\,|}{S^{\text{Nash}}_0},
+\end{equation*}
+with targets of $\varepsilon_{\text{spread}} < 1\%$ at Tier~1 (fixed
+population quote) and $\varepsilon_{\text{spread}} < 3\%$ at Tier~2
+(MV-fictitious-play closure).  The current best Tier~1 result is
+0.59\% error at $N = 2$.
+
+\paragraph{Empirical convergence-rate tests.}
+The $O(1/\sqrt{N})$ propagation-of-chaos bound of
+\citet{buckdahn2009limit} gives a principled, non-asymptotic check:
+computing the exact Nash at $N \in \{2, 3, 5, 10, 25, 100, 5000\}$ and
+fitting $S^{\text{Nash}}_0(N) = a + b/\sqrt{N}$ should yield a
+residual consistent with the theoretical rate.  Deviations flag
+either a solver bug or a breakdown of the mean-field regime.
+
+\paragraph{Failure-mode diagnostics.}
+Each of the three failure modes identified in \S\ref{sec:related}
+admits a \emph{targeted} test.  BatchNorm erasure is detected by
+injecting a known $m_t$-dependent signal and verifying that the
+network's output responds to it (controlled-input test).
+Representation collapse under DeepSets is detected by permuting
+opponent states and measuring the deviation of the network output
+(equivariance test).  Generator bypass is detected by comparing the
+network's extracted optimal quotes against the FOC solution to the
+analytic optimisation problem at each inventory state
+(FOC-consistency test).
+
+\paragraph{Reproducibility and regression.}
+All solvers are covered by a pytest suite
+(\texttt{tests/test\_*.py}) pinned to small problem sizes
+($N = 2$, $Q = 5$, $M = 50$ time steps) and numerical tolerances
+that detect any regression in the compensated-martingale correction
+or boundary-quote convention.  Intermediate results are saved as
+JSON under \texttt{results\_final/} for incremental recovery on
+failure, and all experiments are seeded for deterministic replay.
+
+\paragraph{Demonstrating negative results.}
+The regulations explicitly note that negative results are still
+results.  The project anticipates at least one such outcome:
+characterising precisely \emph{why} the naive MV-fictitious-play
+BSDEJ converges to spurious self-consistent fixed points (as
+observed in early prototyping) is itself a contribution, whether
+or not the repair succeeds.  Partial success is reported
+transparently, with failure modes documented rather than papered
+over.
+
+
+% =====================================================================
+\small
+\bibliography{dissertation_study/references}
+
+\end{document}

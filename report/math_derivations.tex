@@ -1,0 +1,568 @@
+% Mathematical derivations for the Cont-Xiong BSDEJ framework.
+%
+% This document collects the analytical contributions of the dissertation:
+%   (a) derivation of the BSDEJ representation of the CX game;
+%   (b) existence via Feng-Wang-Zhao (2018) weak-solution theory for
+%       the continuous-inventory diffusion limit;
+%   (c) three structural-pathology results formalising the failure modes
+%       identified in the literature review.
+%
+% Intended to be integrated into the dissertation body (Chapter 2 or 3)
+% in revised form.  Draft.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage[longnamesfirst]{natbib}
+\bibliographystyle{plainnat}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\Nt}{\widetilde{N}}
+
+\title{\vspace{-2em}Mathematical Derivations for the Cont--Xiong BSDEJ Framework}
+\author{Christian Garry \\ MSc MISCADA, Durham University}
+\date{April 2026 (draft)}
+
+\begin{document}
+\maketitle
+\vspace{-1em}
+
+\begin{abstract}
+\noindent
+This note collects three mathematical contributions that underpin
+the computational programme of the dissertation.  Section~1 derives
+the explicit jump-augmented backward stochastic differential
+equation (BSDEJ) representation of the \citet{cont2024} multi-agent
+dealer market game --- a translation not written down in the
+source paper but required for the application of deep BSDE methods.
+Section~2 invokes the quasi-linear PDE / FBSDE weak-solution
+correspondence of \citet{feng2018} to establish the
+well-posedness of the continuous-inventory diffusion limit of
+this BSDEJ.  Section~3 formalises the three structural
+pathologies of neural-network approximations to the BSDEJ that
+are identified but not proven in the accompanying literature
+review: BatchNorm erasure, DeepSets representation collapse, and
+generator bypass via terminal-loss underdetermination.
+\end{abstract}
+
+% =====================================================================
+\section{BSDEJ representation of the Cont--Xiong game}
+\label{sec:derivation}
+
+\citet{cont2024} formulate their dealer market as a stochastic
+differential game whose Nash equilibrium is characterised by a
+coupled system of Hamilton--Jacobi--Bellman (HJB) equations in their
+equation~(28).  They do not explicitly write this system as a
+backward stochastic differential equation with jumps (BSDEJ).  This
+translation is a prerequisite for the application of the deep BSDE
+framework of \citet{han2018} and its jump-augmented extension
+\citep{wang2023}, and is the starting point of this thesis's
+computational programme.
+
+\subsection{Setup}
+
+Fix a filtered probability space $(\Omega, \mathcal{F}, (\mathcal{F}_t)_{t \geq 0}, \P)$
+carrying two independent Poisson random measures $N^a(\dd s, \dd z)$
+and $N^b(\dd s, \dd z)$ on $[0, T] \times \{1\}$ with
+$\mathcal{F}_t$-predictable intensities $\nu^a_t, \nu^b_t$.  Let
+$q_t \in \{-Q, -Q + \Delta, \ldots, Q - \Delta, Q\}$ denote the
+dealer's inventory on the lattice $\mathcal{Q}$ of spacing $\Delta$.
+The dealer controls bid and ask spreads
+$\delta^a_t, \delta^b_t \in [-1, \delta_{\max}]$.  Inventory evolves
+as a pair of controlled Poisson jumps,
+\begin{equation}\label{eq:inventory-sde}
+\dd q_t = -\Delta \, \dd N^a_t + \Delta \, \dd N^b_t,
+\qquad q_0 = q \in \mathcal{Q},
+\end{equation}
+where $N^a$ jumps when a sell order is executed against the dealer's
+ask and $N^b$ jumps when a buy order is filled.  The intensities
+depend on the dealer's own spread and on the average competitor
+spread $m_t$ via the softmax kernel of \citet[eq.~58]{cont2024}:
+\begin{equation}\label{eq:intensities}
+\nu^a_t = \lambda_a \, f_a(\delta^a_t, m_t),
+\qquad
+\nu^b_t = \lambda_b \, f_b(\delta^b_t, m_t),
+\end{equation}
+with
+\begin{equation}\label{eq:softmax}
+f_a(\delta, m) = \frac{1}{N} \, \sigma(-\delta) \, \frac{e^{m}}{1 + e^{\delta + m}},
+\end{equation}
+where $\sigma(\cdot)$ is the logistic sigmoid and an analogous
+formula holds for $f_b$.  The running cost is quadratic inventory
+penalty $\psi(q) = \phi q^2$; the terminal cost is
+$g(q) = -\phi q^2$.  The dealer's objective is to maximise the
+expected discounted profit,
+\begin{equation}\label{eq:objective}
+V(t, q) = \sup_{\delta^a, \delta^b} \E_{t, q} \!\left[
+\int_t^T e^{-r (s-t)} \!\left(
+\delta^a_s \Delta \, \dd N^a_s + \delta^b_s \Delta \, \dd N^b_s - \psi(q_s) \, \dd s
+\right) + e^{-r(T-t)} g(q_T) \right].
+\end{equation}
+
+Standard dynamic-programming arguments \citep{carmona2018} give the
+HJB equation, which under \citet{cont2024}'s mean-field closure
+(i.e.\ $m_t$ treated as given, exogenous quote aggregate) reads:
+\begin{equation}\label{eq:hjb}
+r V(t, q) - \partial_t V(t, q)
+= \max_{\delta^a, \delta^b} \mathcal{H}(t, q, \delta^a, \delta^b, V)
+- \psi(q),
+\qquad V(T, q) = g(q),
+\end{equation}
+where the Hamiltonian is
+\begin{align}\label{eq:hamiltonian}
+\mathcal{H}(t, q, \delta^a, \delta^b, V)
+&= \lambda_a \, f_a(\delta^a, m_t) \!\left[ \delta^a \Delta + V(t, q - \Delta) - V(t, q) \right] \notag\\
+&\quad + \lambda_b \, f_b(\delta^b, m_t) \!\left[ \delta^b \Delta + V(t, q + \Delta) - V(t, q) \right].
+\end{align}
+(Boundary terms $V(t, q \pm \Delta) = V(t, q)$ apply at $q = \pm Q$
+to reflect the inventory constraint.)
+
+\subsection{Derivation}
+
+Define the associated value, jump, and intensity processes along
+the controlled trajectory $(q_t)$:
+\begin{align}\label{eq:YUnu-def}
+Y_t &:= V(t, q_t), \notag\\
+U^a_t &:= V(t, q_{t-} - \Delta) - V(t, q_{t-}), \notag\\
+U^b_t &:= V(t, q_{t-} + \Delta) - V(t, q_{t-}).
+\end{align}
+$U^a_t$ and $U^b_t$ are the jumps experienced by $Y$ at a
+sell-execution and buy-execution event respectively.  Denote the
+compensated Poisson martingales by
+$\Nt^a_t = N^a_t - \int_0^t \nu^a_s \dd s$ and similarly for
+$\Nt^b$.
+
+Under $\delta^{a,\star}_t, \delta^{b,\star}_t$ achieving the maximum in
+\eqref{eq:hjb}, apply It\^o's formula for semimartingales with
+jumps \citep[Theorem~III.7.32]{oksendal1998} to $Y_t = V(t, q_t)$:
+\begin{equation}\label{eq:ito-jump}
+\dd Y_t = \partial_t V(t, q_t)\, \dd t
++ U^a_t \, \dd N^a_t + U^b_t \, \dd N^b_t.
+\end{equation}
+Decompose the jump terms into compensated martingale and drift:
+\begin{equation}\label{eq:decompose-jumps}
+U^a_t \, \dd N^a_t = U^a_t \, \dd \Nt^a_t + U^a_t \, \nu^a_t \, \dd t,
+\end{equation}
+and analogously for $b$.  Substituting and collecting drift terms,
+\begin{equation}\label{eq:dY-pre}
+\dd Y_t = \!\left[\partial_t V(t, q_t) + U^a_t \nu^a_t + U^b_t \nu^b_t \right] \dd t
++ U^a_t \, \dd \Nt^a_t + U^b_t \, \dd \Nt^b_t.
+\end{equation}
+The HJB~\eqref{eq:hjb} evaluated at $q = q_t$ and at optimal
+$\delta^\star$ gives
+\begin{align*}
+\partial_t V(t, q_t) &= r V(t, q_t) + \psi(q_t)
+- \nu^{a,\star}_t \!\left[\delta^{a,\star}_t \Delta + U^a_t \right]
+- \nu^{b,\star}_t \!\left[\delta^{b,\star}_t \Delta + U^b_t \right],
+\end{align*}
+where $\nu^{a,\star}_t := \lambda_a f_a(\delta^{a,\star}_t, m_t)$.
+Since the optimal intensities under the Nash-closure equal the
+process intensities, $\nu^{a,\star}_t = \nu^a_t$ and similarly
+for $b$, the $U^a \nu^a$ and $U^b \nu^b$ terms
+\emph{cancel} between \eqref{eq:dY-pre} and the HJB substitution.
+What remains is:
+\begin{equation}\label{eq:bsdej-drift}
+\dd Y_t = \!\left[ r Y_t + \psi(q_t) -
+\nu^{a,\star}_t \, \delta^{a,\star}_t \Delta -
+\nu^{b,\star}_t \, \delta^{b,\star}_t \Delta \right] \dd t
++ U^a_t \, \dd \Nt^a_t + U^b_t \, \dd \Nt^b_t.
+\end{equation}
+The optimal quotes $\delta^{a,\star}_t, \delta^{b,\star}_t$ are
+determined by the first-order condition derived from
+\eqref{eq:hamiltonian}; since $f_a$ depends on $\delta^a$ only
+through the factor $\sigma(-\delta^a)/(1 + e^{\delta^a + m_t})$ which
+is strictly log-concave in $\delta^a$, the optimiser is unique and
+given implicitly by
+\begin{equation}\label{eq:foc}
+\delta^{a,\star}_t = \arg\max_\delta\, f_a(\delta, m_t)(\delta \Delta + U^a_t),
+\qquad
+\delta^{b,\star}_t = \arg\max_\delta\, f_b(\delta, m_t)(\delta \Delta + U^b_t).
+\end{equation}
+Writing \eqref{eq:bsdej-drift} in backward form with terminal
+condition,
+\begin{equation}\label{eq:bsdej}
+\boxed{\;
+-\dd Y_t = F(t, q_t, Y_t, U^a_t, U^b_t) \, \dd t
+- U^a_t \, \dd \Nt^a_t - U^b_t \, \dd \Nt^b_t,
+\qquad
+Y_T = g(q_T),
+\;}
+\end{equation}
+with generator
+\begin{equation}\label{eq:generator}
+F(t, q, y, u^a, u^b) =
+-r y - \phi q^2
++ \lambda_a f_a(\delta^{a,\star}, m_t) \delta^{a,\star} \Delta
++ \lambda_b f_b(\delta^{b,\star}, m_t) \delta^{b,\star} \Delta,
+\end{equation}
+where $\delta^{a,\star} = \delta^{a,\star}(u^a, m_t)$ and
+$\delta^{b,\star} = \delta^{b,\star}(u^b, m_t)$ are as in
+\eqref{eq:foc}.
+
+\begin{proposition}\label{prop:bsdej-representation}
+Under the \citet{cont2024} intensity-control dealer-market model
+with mean-field quote closure $m_t = m(t, \mu_t)$, the value
+function $V(t, q)$ solving the HJB equation~\eqref{eq:hjb} admits
+a representation as the $Y$-component of the BSDEJ
+\eqref{eq:bsdej} with generator~\eqref{eq:generator} and
+terminal condition $Y_T = -\phi q_T^2$.  The diffusion coefficient
+$Z$ vanishes identically because the forward SDE
+\eqref{eq:inventory-sde} has no Brownian component; the BSDEJ is
+therefore pure-jump.
+\end{proposition}
+
+\begin{proof}
+Immediate from the derivation above.  Uniqueness of
+$(Y, U^a, U^b)$ in the space
+$\mathbb{H}^2 \times \mathbb{H}^2(\Nt^a) \times \mathbb{H}^2(\Nt^b)$
+follows from the BSDEJ well-posedness result of
+\citet{barles1997} and \citet{tang1994}, given the Lipschitz
+regularity of the generator $F$ in $(y, u^a, u^b)$ (which follows
+from smoothness of $f_a, f_b$ and strict log-concavity of the
+FOC).
+\end{proof}
+
+\begin{remark}\label{rem:Z-zero-degeneracy}
+Proposition~\ref{prop:bsdej-representation} highlights a structural
+feature of the CX model: its BSDEJ is degenerate in the sense that
+the diffusion coefficient $Z_t$ vanishes identically.  The
+canonical deep BSDE method of \citet{han2018} parameterises $Z$ by
+a neural network; in our setting, the network instead parameterises
+$(U^a, U^b)$, the jump coefficients.  Recovering a non-degenerate
+deep BSDE with $Z \neq 0$ requires replacing the discrete Poisson
+inventory dynamics with a diffusion approximation, to which we
+turn in Section~\ref{sec:feng-existence}.
+\end{remark}
+
+% =====================================================================
+\section{Existence in the continuous-inventory limit}
+\label{sec:feng-existence}
+
+The BSDEJ~\eqref{eq:bsdej} is the exact representation of the
+discrete-inventory CX game.  For the deep BSDE method to learn
+the gradient process $Z_t = \sigma_q \, \partial_q V$ of its
+canonical formulation, we pass to a continuous-inventory
+diffusion approximation of \eqref{eq:inventory-sde}.
+
+\subsection{Diffusion approximation}
+
+In the regime of high execution intensities and short inter-arrival
+times --- the Poisson central-limit regime --- the controlled jump
+process \eqref{eq:inventory-sde} is approximated in law by a
+controlled diffusion:
+\begin{equation}\label{eq:diffusion-sde}
+\dd q_t = \mu_q(q_t, \delta^a_t, \delta^b_t) \, \dd t
++ \sigma_q(q_t, \delta^a_t, \delta^b_t) \, \dd W_t,
+\end{equation}
+with drift and diffusion coefficients
+\begin{align}\label{eq:mu-sigma}
+\mu_q &= \Delta \!\left[ \lambda_b f_b(\delta^b, m) - \lambda_a f_a(\delta^a, m) \right], \notag\\
+\sigma_q^2 &= \Delta^2 \!\left[ \lambda_a f_a(\delta^a, m) + \lambda_b f_b(\delta^b, m) \right].
+\end{align}
+Under~\eqref{eq:diffusion-sde}, the associated backward equation
+acquires a Brownian martingale term:
+\begin{equation}\label{eq:bsde-diffusion}
+-\dd Y_t = \widetilde{F}(t, q_t, Y_t, Z_t) \, \dd t - Z_t \, \dd W_t,
+\qquad Y_T = g(q_T),
+\end{equation}
+where
+\begin{equation}\label{eq:F-tilde}
+\widetilde{F}(t, q, y, z) = -r y - \phi q^2
++ \lambda_a f_a(\delta^{a,\star}, m) \delta^{a,\star} \Delta
++ \lambda_b f_b(\delta^{b,\star}, m) \delta^{b,\star} \Delta,
+\end{equation}
+and the optimal quotes now satisfy the modified FOC
+\begin{equation}\label{eq:foc-diffusion}
+\delta^{a,\star} = \arg\max_\delta f_a(\delta, m)(\delta \Delta - (Z/\sigma_q) \Delta),
+\qquad
+\delta^{b,\star} = \arg\max_\delta f_b(\delta, m)(\delta \Delta + (Z/\sigma_q) \Delta),
+\end{equation}
+using the identity $\partial_q V = Z/\sigma_q$ from the martingale
+representation of the Brownian-only FBSDE.
+
+\subsection{Invocation of Feng--Wang--Zhao}
+
+\citet{feng2018} prove existence of weak solutions to quasi-linear
+parabolic PDEs of the form
+\begin{equation}\label{eq:feng-pde}
+\partial_t u + \tfrac{1}{2} \mathrm{tr}(\sigma \sigma^\top \nabla^2 u)
++ b^\top \nabla u + f(t, x, u, \sigma^\top \nabla u) = 0
+\end{equation}
+via the associated FBSDE representation, under the following
+hypotheses on the coefficients $(b, \sigma, f)$: local
+Lipschitz continuity in $(x, u, \nabla u)$, linear growth, and
+suitable compactness of the terminal condition.  Their main
+result, \citep[Theorem~3.3]{feng2018}, establishes that if these
+hypotheses hold, then the PDE~\eqref{eq:feng-pde} admits a weak
+solution in the space $L^2(0, T; H^1) \cap C([0, T]; L^2)$, and
+the solution coincides with the decoupling field
+$u(t, x) = Y_t^{t, x}$ of the FBSDE.
+
+\begin{assumption}\label{asm:regularity}
+The market parameters satisfy:
+\begin{enumerate}
+\item $\lambda_a, \lambda_b > 0$ bounded;
+\item $r, \phi > 0$; $\Delta \in (0, \infty)$;
+\item $m \in [-M, M]$ for some $M < \infty$;
+\item $\delta \in [-1, \delta_{\max}]$ for some $\delta_{\max} < \infty$.
+\end{enumerate}
+\end{assumption}
+
+\begin{lemma}\label{lem:coefficients-Lipschitz}
+Under Assumption~\ref{asm:regularity}, the coefficients
+$(b, \sigma, f) = (\mu_q, \sigma_q, \widetilde{F})$ of the
+diffusion system \eqref{eq:diffusion-sde}--\eqref{eq:F-tilde} are
+locally Lipschitz in $(q, y, z)$ and satisfy linear-growth
+bounds.
+\end{lemma}
+
+\begin{proof}
+The execution kernel $f_a(\delta, m)$ defined
+in~\eqref{eq:softmax} is $C^\infty$ in $(\delta, m)$, and its
+partial derivatives are bounded on the admissible range of
+Assumption~\ref{asm:regularity}(3)--(4).  Hence $\mu_q$ and
+$\sigma_q$ are bounded and smooth in $(\delta^a, \delta^b, m)$.
+The optimal quotes $\delta^{a,\star}(z, m)$ are determined by the
+unique zero of the strictly concave objective
+in~\eqref{eq:foc-diffusion}; implicit-function arguments give
+local Lipschitz continuity in $(z, m)$.  Substituting back,
+$\widetilde{F}(t, q, y, z)$ inherits local Lipschitz continuity
+in $(q, y, z)$, linear growth, and boundedness of the
+$y$-derivative by $r$.
+\end{proof}
+
+\begin{corollary}\label{cor:feng-existence}
+Under Assumption~\ref{asm:regularity}, the continuous-inventory
+BSDE~\eqref{eq:bsde-diffusion}--\eqref{eq:F-tilde} admits a
+unique solution $(Y, Z) \in \mathbb{H}^2 \times \mathbb{H}^2$ for
+each initial condition $q_0 \in [-Q, Q]$, and the associated
+value function $v(t, q) := Y_t^{t, q}$ is a weak solution of the
+quasi-linear PDE
+\begin{equation}\label{eq:cx-pde}
+\partial_t v + \mu_q(q, \delta^\star) \partial_q v
++ \tfrac{1}{2} \sigma_q^2(q, \delta^\star) \partial_q^2 v
++ \widetilde{F}(t, q, v, \sigma_q \partial_q v) = 0,
+\qquad v(T, q) = g(q).
+\end{equation}
+\end{corollary}
+
+\begin{proof}
+Combine Lemma~\ref{lem:coefficients-Lipschitz} with
+\citep[Theorem~3.3]{feng2018}.
+\end{proof}
+
+\begin{remark}\label{rem:cx-existence-discrete}
+For the discrete-inventory BSDEJ~\eqref{eq:bsdej}, existence of
+$(Y, U^a, U^b)$ does not require Feng--Wang--Zhao; it follows from
+the pure-jump BSDEJ theory of \citet{barles1997} and
+\citet{tang1994} directly.  The point of
+Corollary~\ref{cor:feng-existence} is to cover the diffusion
+extension, which is what the genuine deep BSDE method requires.
+\end{remark}
+
+% =====================================================================
+\section{Structural pathologies of deep BSDE approximations}
+\label{sec:pathologies}
+
+The literature review identifies three failure modes of
+neural-network parameterisations of the BSDEJ~\eqref{eq:bsdej}
+whose consequence is approximation to the wrong HJB system.  We
+formalise each.
+
+\subsection{Loss of $\mu$-measurability via BatchNorm}
+
+Let $B$ denote the minibatch size during stochastic gradient
+descent, and consider a feature $x \in \R^B$ supplied to a
+BatchNorm layer at training time.  Let
+$\mu_B := \frac{1}{B} \sum_i x_i$ and
+$\sigma_B^2 := \frac{1}{B} \sum_i (x_i - \mu_B)^2$, and write
+$\mathrm{BN}(x) := (x - \mu_B \mathbf{1}) / (\sigma_B + \varepsilon)$
+for a numerical-stability constant $\varepsilon > 0$.
+
+\begin{lemma}\label{lem:bn-erasure}
+If $x = c \, \mathbf{1}$ for some constant $c \in \R$, then
+$\mathrm{BN}(x) = \mathbf{0}$ identically.
+\end{lemma}
+
+\begin{proof}
+Direct computation: $\mu_B = c$, $\sigma_B^2 = 0$, and
+$\mathrm{BN}(x) = (c - c)/\varepsilon \cdot \mathbf{1} = \mathbf{0}$.
+\end{proof}
+
+\begin{proposition}[Loss of $\mu$-measurability]\label{prop:mu-erasure}
+Let $\Phi_\theta: \R^d \times \R \to \R^k$ denote a neural network
+parameterising the value function $V(t, x, \mu_t) \approx \Phi_\theta(t, x, m_t)$
+of a mean-field game, where $m_t \in \R$ is a broadcast population
+statistic.  If $\Phi_\theta$ applies a BatchNorm layer to the
+input coordinate carrying $m_t$, then the output of $\Phi_\theta$
+is $\sigma(x, t)$-measurable independently of $m_t$; equivalently,
+the approximation satisfies $\partial_{m_t} \Phi_\theta \equiv 0$.
+The discretised mean-field HJB therefore collapses to the
+single-agent HJB.
+\end{proposition}
+
+\begin{proof}
+$m_t$ is broadcast constant across the minibatch dimension by
+construction (it is a single scalar for the entire population).
+Lemma~\ref{lem:bn-erasure} gives that the BatchNorm output of the
+$m_t$ coordinate is the zero vector for every minibatch.
+Subsequent layers receive no signal from $m_t$; by the chain
+rule, $\partial_{m_t} \Phi_\theta = 0$ on the training
+distribution.  The resulting $\Phi_\theta(t, x)$ solves the
+Bellman equation without the mean-field coupling, i.e.\ the
+single-agent HJB.
+\end{proof}
+
+\subsection{Representation collapse of symmetric DeepSets}
+
+A DeepSets parameterisation \citep{zaheer2017} of a
+permutation-invariant function $\mu \mapsto \rho(\mu)$ takes the
+form
+$\Phi_\theta(\{x_1, \ldots, x_K\}) = \rho_\theta\!\left( \sum_{i=1}^K \phi_\theta(x_i) \right)$.
+
+\begin{proposition}[Degenerate collapse]\label{prop:deepsets-collapse}
+Suppose $\phi_\theta$ and $\rho_\theta$ are initialised
+with parameters drawn i.i.d.\ from a distribution symmetric under
+coordinate permutations, and suppose the training distribution
+consists of $K$-tuples with $x_i \equiv x$ for all $i$ (i.e.\
+symmetric inputs).  Then the gradient of any symmetric loss
+$\mathcal{L}(\Phi_\theta(\cdot))$ with respect to $\theta$
+preserves the symmetry of the initialisation throughout
+gradient descent; in particular, training converges to a
+stationary point at which $\partial_{\mu} \rho_\theta$ is zero
+on the empirical measure of the training data.
+\end{proposition}
+
+\begin{proof}
+The loss landscape is invariant under the group of permutations
+acting on the input coordinates.  The initialisation is invariant
+under this group action by assumption.  Gradient flow of an
+invariant loss from an invariant initialisation preserves the
+invariance at every iterate.  In particular the learned map has
+no gradient in the direction that distinguishes the uniform
+empirical measure $\mu = \delta_x$ from perturbations of it that
+would break the permutation symmetry.
+\end{proof}
+
+\begin{remark}
+Proposition~\ref{prop:deepsets-collapse} is, like
+Proposition~\ref{prop:mu-erasure}, a statement about loss of
+measurable dependence on $\mu$ --- but the mechanism is a
+degeneracy of the minimiser rather than an active erasure.  In
+practice the two are operationally indistinguishable.
+\end{remark}
+
+\subsection{Terminal-loss underdetermination (generator bypass)}
+
+The canonical deep BSDE training objective for
+\eqref{eq:bsdej} is the empirical terminal loss
+\begin{equation}\label{eq:emp-loss}
+\widehat{\mathcal{L}}_B(\theta) = \frac{1}{B} \sum_{i=1}^B
+\left| Y_T^{(i)}(\theta) - g(q_T^{(i)}) \right|^2,
+\end{equation}
+where the $(Y_T^{(i)})$ are generated by forward propagation of
+the discretised BSDEJ under parameter $\theta$ on a sample of $B$
+paths $(q_T^{(i)})$.  The \citet{han2018} method treats $Y_0$ and
+the jump-coefficient network $(U^a_\theta, U^b_\theta)$ as
+jointly learnable.
+
+\begin{proposition}[Underdetermination of terminal loss]\label{prop:underdetermination}
+Let $\mathcal{U}^\star = \{(u^{a,\star}, u^{b,\star}) \in \mathbb{H}^2(\Nt^a) \times \mathbb{H}^2(\Nt^b)\}$
+denote the unique jump coefficients of the BSDEJ~\eqref{eq:bsdej}
+in the continuum limit.  Fix an empirical batch
+$(q_T^{(i)})_{i=1}^B$ and consider the forward BSDEJ propagation
+restricted to this batch.  The set of parameters
+$\theta$ for which $\widehat{\mathcal{L}}_B(\theta) < \epsilon$
+(for any $\epsilon > 0$) contains an open neighbourhood of
+$\theta^\star := \theta(\mathcal{U}^\star)$ but is not reduced to
+it.  In particular, there exist $\theta \neq \theta^\star$ with
+$\widehat{\mathcal{L}}_B(\theta)$ arbitrarily small but extracted
+optimal quotes $\delta^{a,\star}(U^a_\theta), \delta^{b,\star}(U^b_\theta)$
+differing substantially from the Bellman-optimal
+$\delta^{a,\star}(u^{a,\star}), \delta^{b,\star}(u^{b,\star})$.
+\end{proposition}
+
+\begin{proof}[Proof sketch]
+Parameter count.  The network $\Phi_\theta$ has $\dim(\theta)$
+parameters (typically $10^4$ or more for a width-128 MLP);
+the empirical terminal loss is a single scalar constraint
+averaged over $B$ paths (typically $B \leq 10^3$).  The preimage
+$\widehat{\mathcal{L}}_B^{-1}([0, \epsilon))$ in parameter space
+is therefore generically a submanifold of codimension at most
+$B$ within the $\dim(\theta)$-dimensional parameter space, whose
+intrinsic dimension is at least $\dim(\theta) - B$.  In the
+limit $B \to \infty$ with fixed $\theta$, the law of large
+numbers pins this preimage to $\{\theta^\star\}$ (via the
+uniqueness part of the martingale representation theorem for
+\eqref{eq:bsdej}); but for finite $B$, the preimage has positive
+Lebesgue measure in parameter space.
+
+Explicit counterexample.  Consider a one-step discretisation of
+\eqref{eq:bsdej} on a two-point state space
+$q \in \{-\Delta, 0\}$ with a single Poisson jump time $\tau$.
+Write $Y_1 = Y_0 - F \Delta t + U^a(N^a - \nu^a \Delta t)$.
+On any sample path, the equality
+$Y_1 = g(q_1)$ is a linear equation in the two unknowns
+$(Y_0, U^a)$ (treating $\nu^a, F$ as given).  A single sample
+path gives one equation in two unknowns; infinitely many
+$(Y_0, U^a)$ satisfy it.  Only aggregation over infinitely many
+paths --- exploiting the strict concavity of the quadratic
+loss --- pins $(Y_0, U^a)$ to the Bellman values.  This
+underdetermination propagates to the discretised BSDEJ on
+$\mathcal{Q}$ for any finite $B$.
+\end{proof}
+
+\begin{corollary}[Non-Bellman fixed points of MV-fictitious play]\label{cor:nonbellman-fp}
+When the discretised BSDEJ is embedded in the outer McKean--Vlasov
+fictitious-play iteration
+$\mathrm{avg\_comp}^{(k+1)} = (1 - \eta) \mathrm{avg\_comp}^{(k)} + \eta \, \overline{\delta^\star(U_\theta^{(k)})}$,
+Proposition~\ref{prop:underdetermination} implies that the
+iteration can converge to fixed points
+$\mathrm{avg\_comp}^{(\infty)}$ at which the extracted quote
+average $\overline{\delta^\star(U_\theta)}$ equals
+$\mathrm{avg\_comp}^{(\infty)}$ (so the outer FP is consistent)
+but neither $U_\theta$ nor
+$\overline{\delta^\star(U_\theta)}$ corresponds to the Nash
+equilibrium of the CX game.
+\end{corollary}
+
+\begin{proof}
+Immediate from Proposition~\ref{prop:underdetermination}
+combined with the contractivity of damped
+fictitious-play.  The outer iteration is indifferent to which
+element of $\widehat{\mathcal{L}}_B^{-1}([0, \epsilon))$ is
+selected by the inner optimiser; any such element produces a
+self-consistent fixed point of the outer map, whether or not it
+coincides with the Nash equilibrium.
+\end{proof}
+
+Corollary~\ref{cor:nonbellman-fp} is the precise statement of the
+``spurious fixed point'' phenomenon observed empirically in this
+thesis's MV-fictitious-play experiments.  The overnight queue
+of regularisation schemes (v4--v8 in the experimental programme)
+targets Proposition~\ref{prop:underdetermination} directly: each
+introduces a prior on $\theta$ that shrinks the effective
+dimension of the preimage, pushing the optimiser toward
+$\theta^\star$.
+
+% =====================================================================
+\small
+\bibliography{dissertation_study/references}
+
+\end{document}

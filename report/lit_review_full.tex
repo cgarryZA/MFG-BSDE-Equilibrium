@@ -1,0 +1,556 @@
+% Full literature review.
+% 42 papers across 5 sections; ~3800 words.
+% Research question: How can deep learning methods for BSDEs with jumps be
+% applied to solve Nash equilibria and detect tacit collusion in multi-agent
+% dealer market models, specifically the Cont--Xiong (2024) intensity-controlled
+% market-making game?
+
+\section{Introduction}\label{sec:lit-intro}
+
+Multi-agent dealer market-making sits at an uncomfortable
+intersection in the mathematical literature.  The $N$-player
+stochastic-differential-game formulation of \citet{cont2024}
+admits, in principle, a probabilistic treatment via backward
+stochastic differential equations (BSDEs) and mean-field games
+(MFGs), and a numerical treatment via deep-learning methods.  In practice, no
+existing framework simultaneously handles all three ingredients:
+\citet{han2022} give a curse-of-dimensionality-free deep-BSDE
+method for McKean--Vlasov FBSDEs but without jumps;
+\citet{wang2023} extend deep BSDE to jump-diffusion processes but
+without mean-field coupling; \citet{cont2024} solve their own
+game empirically via multi-agent reinforcement learning but
+without the equilibrium grounding or interpretable gradients that
+a principled method would supply.  Combining all three ---
+jump-augmented BSDEs, mean-field coupling, and deep-learning
+numerics --- into a single computational method for a realistic
+market-microstructure model remains open, and the failure modes
+that emerge when one tries are not systematically documented in
+the literature.
+
+This review is framed around a single target problem: the multi-agent
+dealer market-making game of \citet{cont2024}.  Every piece of theory
+surveyed in \S\ref{sec:lit-math}, every numerical tool catalogued in
+\S\ref{sec:lit-num}, and every empirical finding discussed in
+\S\ref{sec:lit-empirical} is selected because it is needed to solve
+that game.  \S\ref{sec:lit-math} assembles the probabilistic
+scaffolding --- BSDEs, jump processes, mean-field limits, master
+equations --- that lets us write down the Cont--Xiong value function.
+\S\ref{sec:lit-num} covers the deep-learning numerical machinery that
+makes the resulting high-dimensional mean-field BSDE with jumps
+computable.  \S\ref{sec:lit-empirical} positions the thesis against
+the multi-agent reinforcement-learning literature in which
+Cont--Xiong was first solved empirically, and isolates what a
+principled BSDE treatment adds.  \S\ref{sec:lit-conclusion}
+identifies what no existing work yet provides.
+
+The starting point is \citet{pardoux1990}, who established the
+existence and uniqueness of adapted solutions to BSDEs under Lipschitz
+conditions by a probabilistic fixed-point argument.  Their result
+provides the theoretical bedrock on which every subsequent development
+rests: it guarantees that a BSDE, despite being specified ``backwards''
+from a terminal condition, has a well-defined solution adapted to the
+forward filtration of a Brownian motion.  The translation of this
+technology into quantitative finance was effected by
+\citet{elkaroui1997}, who showed that pricing, hedging, and risk
+management under constraints admit a natural BSDE formulation.
+For a European contingent claim $\xi = g(S_T)$ in a
+Black--Scholes market with risk-free rate $r$, drift $\mu$ and
+volatility $\sigma$, the no-arbitrage price and replicating
+strategy $(Y_t, Z_t)$ satisfy the linear BSDE
+\[
+  -dY_t \;=\; \bigl[r Y_t + Z_t \theta\bigr] dt - Z_t\, dW_t,
+  \qquad Y_T \;=\; g(S_T),
+\]
+where $\theta = (\mu - r)/\sigma$ is the market price of risk and
+$Z_t$ is the hedging portfolio in the risky asset.  Their
+framework unified arbitrage-free pricing, superhedging via
+\emph{reflected} BSDEs (for American options), and Epstein--Zin-type
+recursive utilities into a single probabilistic language, turning
+BSDEs from a purely theoretical object into a practical tool for
+derivative pricing and for the study of incomplete markets.
+
+In parallel with the BSDE literature, Lasry and Lions --- and
+independently Huang, Caines, and Malham\'{e} --- introduced
+mean-field games as a tractable approximation of $N$-player
+stochastic differential games in the regime $N \to \infty$.
+\citet{carmona2013} recast this analytic theory in purely
+probabilistic terms, showing that an MFG equilibrium is
+characterised by a McKean--Vlasov forward-backward SDE system in
+which the distribution $\mu_t$ of a representative agent's state
+enters both the drift and the terminal condition; the stochastic
+maximum principle then supplies the natural optimality condition,
+avoiding the infinite-dimensional PDEs of the analytic formulation.
+Extensions have since covered games of optimal timing
+\citep{carmona2017} and the long-time ergodic behaviour of MFG
+systems \citep{cardaliaguet2012}; for a comprehensive survey of
+analytical and numerical methods, see \citet{achdou2020}.
+
+% ============================================================
+\section{Mathematical Framework}\label{sec:lit-math}
+
+Any probabilistic treatment of BSDEs rests on Brownian motion, the
+It\^{o} integral, and the classical theory of stochastic differential
+equations, standard references for which are \citet{oksendal1998}.
+Within this setting, a BSDE is a pair of adapted processes $(Y_t, Z_t)$
+satisfying
+\[
+Y_t \;=\; \xi + \int_t^T f(s, Y_s, Z_s)\,ds - \int_t^T Z_s\,dW_s,
+\qquad t \in [0, T],
+\]
+where $\xi$ is an $\mathcal{F}_T$-measurable terminal condition and
+$f$ is the driver.  \citet{pardoux1990} proved that whenever $f$ is
+uniformly Lipschitz in $(y, z)$ with $\xi$ and $f(\cdot, 0, 0)$ in
+$\mathbb{H}^2$ (the Hilbert space of square-integrable progressively
+measurable processes), there exists a unique adapted pair
+$(Y, Z) \in \mathbb{H}^2 \times \mathbb{H}^2$ solving the BSDE,
+obtained as the fixed point of the contraction
+\[
+  \Phi(Y, Z)_t \;:=\; \mathbb{E}\!\left[\xi + \int_t^T f(s, Y_s, Z_s)\,ds \,\Big|\,
+    \mathcal{F}_t\right]
+\]
+on the Banach space $\mathbb{H}^2 \times \mathbb{H}^2$.  A large
+body of later work has explored the structural consequences of this
+theorem.  The Pardoux--Peng existence theory has since been extended in
+several directions relevant to this project.  \citet{feng2018}
+established the weak-solution correspondence between quasi-linear
+PDEs and FBSDEs, which applies to the Cont--Xiong HJB system whose
+coefficients are quasi-linear rather than classical.  \citet{peng2004} showed
+that BSDEs naturally generate \emph{nonlinear expectations}.  Given
+a driver $g(t, z)$ independent of $y$, the $g$-expectation of a
+terminal value $\xi \in L^2(\mathcal{F}_T)$ is defined as
+\[
+  \mathcal{E}^g[\xi] \;:=\; Y_0,
+  \qquad \text{where } (Y, Z) \text{ solves the BSDE with driver }
+  g \text{ and terminal } \xi.
+\]
+When $g$ is positively homogeneous and subadditive in $z$, the
+functional $\xi \mapsto \mathcal{E}^g[\xi]$ satisfies the
+Artzner--Delbaen--Eber--Heath axioms (monotonicity, translation
+invariance, positive homogeneity, subadditivity) of a coherent
+risk measure; convex $g$ yields a convex risk measure in the
+sense of F\"ollmer--Schied.  This elevates BSDE theory to an
+axiomatic foundation for risk measurement, placing the $Z$-process
+learned by later deep-BSDE algorithms in the role of a
+risk-sensitivity functional.  The crucial martingale representation result underlying
+existence — that any square-integrable martingale adapted to a
+Brownian filtration admits a representation as a stochastic integral —
+is what makes the $Z$-process well-defined and is also what Han, E,
+and Jentzen will later exploit to parameterise $Z$ by a neural
+network.
+
+Mean-field BSDEs (MF-BSDEs) extend this picture by allowing the
+driver or the terminal condition to depend on the law of the
+solution itself.  \citet{buckdahn2009viscosity} established the
+connection between MF-BSDEs and non-local partial differential
+equations via viscosity solution theory: the solution of an MF-BSDE
+provides the unique viscosity solution of an associated non-local
+PDE on the state space.  The non-locality reflects the fact that the
+distribution $\mu_t$ of the forward process enters the PDE, which
+immediately precludes any classical finite-difference numerical
+scheme above a few dimensions.  A complementary paper
+\citep{buckdahn2009limit} establishes the mean-field limit itself:
+starting from an $N$-player FBSDE system with empirical measure
+$\mu_t^N = N^{-1} \sum_{i=1}^N \delta_{X_t^{i,N}}$, the authors
+prove that each $i$-th particle converges in $L^2$ to a
+McKean--Vlasov BSDE with law $\mu_t$ at a rate
+\[
+  \sqrt{\mathbb{E} \sup_{t \leq T} \bigl|X_t^{i,N} - X_t^i\bigr|^2
+  + \mathbb{E} \sup_{t \leq T} \bigl|Y_t^{i,N} - Y_t^i\bigr|^2 }
+  \;\leq\; \frac{C}{\sqrt{N}},
+\]
+for a constant $C$ depending on the Lipschitz constants of the
+drift, diffusion, and driver.  This rate is of direct relevance
+to every empirical study of mean-field approximation at finite
+$N$: it gives a precise, non-asymptotic benchmark against which
+finite-$N$ simulation error can be compared.
+
+The jump-augmented case has a parallel classical theory that
+predates the deep-learning numerics discussed in \S\ref{sec:lit-num}.
+\citet{tang1994} established necessary conditions for optimal
+control of stochastic systems with random jumps, extending
+Pontryagin's maximum principle to a setting in which execution events
+are discrete.  \citet{barles1997} gave the BSDE/integro-partial
+differential equation correspondence that is the direct analogue of
+the Pardoux--Peng--Feynman--Kac bridge for Brownian BSDEs: the
+solution of a BSDE with a compensated Poisson jump term is the
+unique viscosity solution of an associated IPDE.  Together these
+papers provide the probabilistic foundation on which any numerical
+jump-BSDE scheme --- including the deep BSDEJ method of \S
+\ref{sec:lit-num}, and any MV-fictitious-play BSDEJ solver built
+on top of it --- must ultimately rest.
+
+The definitive probabilistic treatment of MFGs is the two-volume
+monograph of \citet{carmona2018}.  Volume I develops the mean-field
+FBSDE framework, the stochastic maximum principle, and
+well-posedness under structural conditions.  Volume II extends the
+theory to mean-field games with common noise — where all agents are
+exposed to a shared stochastic shock, inducing conditional
+distributions $\mu_t(\omega^0)$ rather than deterministic measure
+flows — and to the master equation on the Wasserstein space.  The
+master equation is a PDE in $(t, x, \mu)$ whose solution encodes the
+entire MFG value function, and its probabilistic study combines the
+Lions derivative with the FBSDE-flow machinery.  Existence in the
+common-noise case was established independently by
+\citet{carmona2016} using strong and weak formulations and a
+Schauder fixed-point argument.  Classical solutions of the master
+equation, and hence the differentiability of the MV-FBSDE flow, were
+obtained by \citet{chassagneux2014} under strong
+regularity assumptions on the coefficients.
+
+On the control-theoretic side, \citet{bayraktar2018}
+obtained a randomised dynamic programming principle and a nonlinear
+Feynman--Kac representation for McKean--Vlasov value functions,
+realising them as the $Y$-component of FBSDEs with autonomous
+forward processes.  This result is the direct analogue, in the
+mean-field setting, of the classical Feynman--Kac bridge that
+motivates the deep BSDE method.  \citet{wuzhang2020} sharpened
+the master-equation theory by introducing a genuine viscosity-solution
+notion for parabolic master equations on the Wasserstein space, with
+closed-loop controls, thereby removing some of the regularity
+restrictions that Chassagneux et al.\ needed.
+
+Finer properties of the mean-field limit were studied by
+\citet{delarue2019}, who established a central limit theorem for
+the $N$-player game fluctuations around their mean-field limit and
+characterised the Gaussian correction in terms of a linearised
+master equation.  Their CLT result is particularly relevant for the
+present thesis because the Cont--Xiong market-making game is
+naturally formulated in a finite-$N$ regime, and the $O(1/\sqrt{N})$
+propagation of chaos of \citet{buckdahn2009limit} combined with the
+CLT corrections of Delarue et al.\ gives a quantitative picture of
+how finite-$N$ Nash equilibria deviate from mean-field equilibria.
+Finally, \citet{zhang2023} studied stochastic recursive
+control problems of McKean--Vlasov type via the dynamic programming
+principle on an infinite-dimensional HJB equation, providing a
+further link between MV-FBSDE theory and the recursive-utility
+literature.  Together, these results yield a mathematical framework
+that is well-posed, quantitatively understood at finite $N$, and
+equipped with a viscosity and a probabilistic representation — but
+still without a computable solution in any high-dimensional setting.
+
+% ============================================================
+\section{Numerical Methodology}\label{sec:lit-num}
+
+The numerical analysis of BSDEs follows two historical phases.
+The first, beginning with \citet{kloeden1992, kloeden1994} for
+forward SDEs, establishes the discretisation benchmarks: for a
+step size $\Delta t$ the Euler--Maruyama scheme has strong
+convergence order $1/2$ (i.e.\
+$\mathbb{E}|X_T - X_T^{\Delta t}| = O(\sqrt{\Delta t})$) and weak
+order $1$, while the Milstein correction attains strong order $1$
+at the cost of requiring derivatives of the diffusion
+coefficient.  \citet{pengxu2011} extended these ideas to BSDEs,
+developing backward time-stepping schemes --- implicit Euler with
+rate $|Y_0^{\Delta t} - Y_0| = O(\sqrt{\Delta t})$ under standard
+smoothness and Crank--Nicolson with rate $O(\Delta t)$ --- coupled
+with conditional-expectation estimators (quantisation, Malliavin
+weights, least-squares regression).  These methods are rigorous
+and enjoy classical convergence rates, but they all share a
+fatal limitation: computing the conditional expectations
+$\mathbb{E}[Y_{t_{n+1}} | \mathcal{F}_{t_n}]$ by grid-based or
+regression methods scales as $O(M^d)$ in the state dimension $d$,
+so that $d \gtrsim 4{-}5$ is effectively out of reach.  For the
+dealer-market problem of \citet{cont2024} this renders the
+direct approach infeasible already at moderate numbers of
+competitors.
+
+The second phase is inaugurated by \citet{ehanjentzen2017} and its
+journal version \citet{han2018}, who reformulate
+a parabolic PDE as a BSDE and parameterise the gradient process $Z$ by
+a deep neural network, with $Y_0$ being a single learnable scalar.
+The training objective is the mean-square deviation of the simulated
+terminal value $Y_T^\pi$ from the prescribed $g(X_T)$.  Once trained,
+the network encodes both the value function $u(0, x) = Y_0$ and its
+gradient $\nabla u(t, x) = Z_t/\sigma$ along all simulated paths.
+Empirically, this approach handles up to 100 dimensions on a laptop;
+the authors reported successful experiments on the Black--Scholes
+PDE with correlated assets, the Hamilton--Jacobi--Bellman equation
+for a linear-quadratic controller, and the Allen--Cahn PDE.  The
+extension to fully nonlinear second-order BSDEs was carried out by
+\citet{beck2019}, who treated 100-dimensional
+Black--Scholes--Barenblatt, HJB, and $G$-Brownian-motion problems
+under the 2BSDE framework, with neural networks approximating both
+the gradient and the Hessian.  Both of these papers are empirical:
+rigorous convergence proofs for the original deep BSDE method are
+still absent, a gap that \citet{carmona2019} partially
+fill by giving two algorithms for ergodic McKean--Vlasov control
+and proving convergence under network-architecture-dependent rates.
+
+The step from BSDEs to McKean--Vlasov FBSDEs introduces a second
+source of difficulty: the coefficients now depend on the unknown law
+$\mu_t$ of the forward process, so the training loop must couple
+neural-network learning with a distribution-matching fixed-point
+iteration.  \citet{guo2023} develop a general mean-field game (GMFG)
+framework in which the coupling passes through the joint
+state--action distribution $(\mu_t, \nu_t)$ rather than the state
+distribution alone: rewards $r(x, a, \mu, \nu)$ and transition
+kernels $P(\cdot | x, a, \mu, \nu)$ depend on the empirical action
+law as well as the empirical state law, generalising classical
+MFGs to McKean--Vlasov type.  They prove convergence of
+fictitious play to the GMFG Nash equilibrium under Lipschitz and
+contraction conditions on the associated Bellman operator,
+handling $\mu_t$ computationally through empirical particle
+representations.  The decisive theoretical advance for the
+present thesis is \citet{han2022}, who propose a novel
+deep-learning algorithm for MV-FBSDEs with general mean-field
+interactions and prove that its convergence is \emph{free of the
+curse of dimensionality} under monotonicity conditions.  Their proof
+uses a class of integral probability metrics and a fictitious-play
+decomposition: the outer loop updates the mean-field measure using
+a population-averaged surrogate, and the inner loop solves a
+standard FBSDE by deep BSDE techniques.  The complexity is shown to
+grow only polynomially with dimension, so long as the Lasry--Lions
+monotonicity condition holds on the coupling term.  This
+monotonicity requirement is a real constraint in applications: for
+the Cont--Xiong coupling, global Lasry--Lions monotonicity on the
+Wasserstein space has not been established, and empirically
+monotonicity can be verified only along a one-dimensional slice
+parameterised by the mean competitor quote.  The Han--Hu--Long
+convergence guarantee therefore applies only on the restricted
+slice of measure space relevant to a coupling like Cont--Xiong's,
+a subtlety that the original paper does not address.  Modulo that
+caveat, the Han--Hu--Long algorithm is the natural template on
+which any MV-fictitious-play BSDEJ solver for the Cont--Xiong
+game would be built.
+
+The extension of deep BSDE to jump-diffusion processes and forward
+BSDEs with jumps (FBSDEJs) is due to \citet{wang2023}, whose work
+is the computational counterpart of the classical BSDE/IPDE
+equivalence of \citet{barles1997}.  Wang and collaborators
+parameterise the jump coefficient $U_t^a, U_t^b$ alongside $Z_t$ by
+separate neural networks and report convergence in up to 100
+dimensions.  Two caveats warrant emphasis.  First, as of writing,
+\citet{wang2023} has accumulated only a handful of citations,
+making the deep BSDEJ numerical literature considerably less
+mature than the Brownian-only deep BSDE literature it extends;
+any downstream application must therefore do its own due
+diligence on convergence, on architectural ablations, and on the
+exact form of the compensated-martingale correction, which is
+subtle to implement correctly.  Second, the Cont--Xiong model as currently formulated
+has discrete inventory $q_t \in \{-Q, \ldots, Q\}$, so the
+associated BSDE is pure-jump: the diffusion coefficient $Z_t$
+vanishes identically, and the network learns only
+$(U_t^a, U_t^b)$.  This is a degenerate case of the full deep BSDE
+method — the $Z$-gradient that \citet{han2018} make the centrepiece
+of their method plays no role — and a continuous-inventory
+diffusion reformulation, in which $q_t$ follows a
+stochastic-approximation SDE with $\sigma_q \neq 0$ and
+$Z_t = \sigma_q\,\partial_q V$ is learned genuinely, is a natural
+extension of the present work.  Taken together, the deep BSDE
+literature up to 2023 provides every tool needed to solve the
+Cont--Xiong problem — Han--E--Jentzen for the $Z$-gradient,
+Han--Hu--Long for the MV distribution coupling, Wang et al.\ for the
+jumps, Barles--Buckdahn--Pardoux for the analytic foundation — but
+no existing study combines all three in the context of a realistic
+market microstructure model.
+
+But ``the tools exist'' is not the same as ``the method works
+out of the box''.  Practical deep BSDE solvers for mean-field games
+exhibit a cluster of failure modes that the optimistic original
+literature does not document.  Three are particularly acute.
+\emph{BatchNorm erasure}: when population-level statistics (such as
+an aggregate competitor-quote summary $m_t$) are broadcast across a
+minibatch, batch normalisation collapses their variance to zero and
+the network learns a distribution-independent policy — the very
+feature that mean-field theory was supposed to capture is silently
+discarded.  \emph{Representation collapse under DeepSets}: the
+permutation-invariant pooling operators routinely used to process
+opponent states can, under symmetric initialisations, produce
+degenerate representations that ignore competitor-specific
+information.  \emph{Generator bypass}: when the network has enough
+capacity, it can satisfy the terminal-loss
+$|Y_T - g(q_T)|^2 \to 0$ with a $U$-profile that is internally
+inconsistent with the first-order-condition-derived optimal quotes,
+so that the solver converges to a self-consistent but non-Nash
+fixed point — a pathology that a naive MV-fictitious-play BSDEJ
+solver can exhibit.  \citet{germain2022} already catalogue
+vanishing gradients, terminal-scale sensitivity, and $Y_0$
+basin-locking; the three failure modes listed above are specific
+to the \emph{mean-field} extension and to the
+\emph{jump-augmented} solver, and are not systematically
+addressed in the existing literature.  These failures share a
+common structure: each of them eliminates or corrupts the
+policy's dependence on the population distribution --- precisely
+the feature that distinguishes a mean-field problem from a
+single-agent one --- so that the network satisfies the training
+loss without actually representing the mean-field interaction.
+Documenting and repairing them is an open problem that this
+thesis takes up.
+
+% ============================================================
+\section{Empirical Results and Financial Applications}\label{sec:lit-empirical}
+
+The translation of deep BSDE and MV-FBSDE methods into finance has
+proceeded along several parallel streams, each reporting its own
+difficulties and partial successes.
+\citet{germain2022} provides a critical survey of NN-based
+algorithms for stochastic control and PDEs in finance, documenting
+systematic training instabilities: vanishing gradients deep in the
+time discretisation, sensitivity to the terminal-loss scale, and a
+tendency for the $Y_0$ estimator to lock onto incorrect basins of
+attraction when the terminal condition is not smooth.  Their paper
+is a useful antidote to the optimism of the original deep BSDE
+literature and motivates the careful regularisation and
+warm-start procedures that any practical deep-BSDE solver for a
+financial MFG must employ.  Rigorous convergence rates
+for deep-NN stochastic control on finite horizons were obtained by
+\citet{hure2020}, who combined deep RL with dynamic
+programming and proved error bounds depending on the regularity of
+the value function.
+
+The pivot point of the empirical literature, for the purposes of the
+present thesis, is \citet{han2022}.  By giving a deep-learning
+algorithm for McKean--Vlasov FBSDEs whose convergence is free of the
+curse of dimensionality under monotonicity, Han, Hu, and Long
+unlocked the mean-field direction for deep BSDE.  Their algorithm
+alternates between a fictitious-play outer loop, which updates the
+empirical measure of the population, and an inner deep-BSDE solve,
+which treats the measure as exogenous.  Convergence is established
+in terms of the number of fictitious-play iterations and the
+supervised-learning error in the inner BSDE.  The numerical
+experiments focus on an ergodic linear-quadratic MFG and a systemic
+risk model; the authors do not treat jump-driven games or discrete
+execution, leaving a clear gap that the Cont--Xiong application
+fills.
+
+The Cont--Xiong model itself \citep{cont2024} is the thesis's
+financial application blueprint.  Cont and Xiong model $N$ competing
+market makers in a continuous-time dealer market as a stochastic
+differential game of intensity control.  Each market maker posts bid
+and ask quotes, and the execution probability in response to a
+random order flow depends on the maker's own quote relative to a
+softmax aggregate of competitors' quotes.  Nash equilibrium is
+characterised by a coupled system of HJB equations (their
+equation~28), whose existence is established by Brouwer's fixed-point
+theorem, and whose computation Cont and Xiong reduce to a
+fictitious-play iteration that alternates policy evaluation (a
+linear Bellman solve) with a best-response step.  The Pareto-optimum
+— which represents joint-objective collusion — is computed by a
+parallel iteration on the joint objective.  Critically, Cont and
+Xiong then show via decentralised multi-agent deep deterministic
+policy gradient (MADDPG) that competing market-making algorithms,
+learning independently from their own trade outcomes without any
+shared information, converge to spreads strictly above the Nash
+equilibrium, a phenomenon they term \emph{tacit collusion}.  This
+empirical finding has direct regulatory implications and
+reframes the MADDPG experiment as a detection mechanism: the gap
+between learned and Nash spreads is a measurable signature of
+algorithmic collusion even in the absence of explicit coordination.
+
+A natural question follows.  If Cont and Xiong have already solved
+their own model empirically via MADDPG, what does a BSDE-based
+treatment add?  Three things.  \emph{Equilibrium grounding}: the
+BSDEJ solution directly targets the Nash fixed point of the coupled
+HJB system, not a behavioural attractor of a learning dynamic; the
+recovered object is an equilibrium by construction.
+\emph{Interpretability}: the learned $Z$ and $U$ processes have
+direct economic meaning --- the sensitivity of the value function
+to inventory and the jump in value at each execution event,
+respectively --- whereas MADDPG's actor and critic networks are
+opaque.  \emph{Convergence structure}: Han--Hu--Long-style
+fictitious-play convergence, subject to the monotonicity caveat
+noted in \S\ref{sec:lit-num}, comes with quantitative error
+bounds; MADDPG offers none.  The two methods are therefore
+complementary: MADDPG reveals what algorithms will actually do in
+practice, while BSDEJ establishes the benchmark from which they
+deviate.  The \emph{gap} between the two --- quantified as
+$|S_{\mathrm{MADDPG}} - S_{\mathrm{Nash}}|$ --- is the natural
+empirical object of interest for any BSDE-based treatment of the
+game.
+
+Related MARL work on realistic LOBs has produced complementary
+results.  \citet{karpe2020} train multi-agent RL agents for
+optimal execution in the ABIDES simulator, showing that model-free
+RL can recover quasi-Almgren--Chriss policies when microstructure
+signals are available; their setup is close to the Cont--Xiong
+environment but lacks the stochastic-game structure.
+\citet{shi2024} take a different angle, proposing a hybrid
+neural stochastic agent-based model in which a pre-trained neural
+point-process captures the background order-flow behaviour of
+uncontrolled traders, and an agent-based layer on top introduces
+strategic decisions.  Both of these papers highlight a common
+empirical issue — generalisation across market regimes is fragile —
+that motivates the use of principled BSDE-based solvers, whose
+training only requires knowledge of the model coefficients rather
+than historical data.
+
+What the empirical literature lacks, as of late 2025, is a deep
+BSDE-with-jumps solution of the Cont--Xiong MFG and a systematic
+finite-$N$ to mean-field comparison.  The closest existing attempt
+is the Han--Hu--Long algorithm applied to non-jump MFGs, combined
+with the Cont--Xiong Bellman-plus-MADDPG study on the finance side.
+Bridging these two is the technical aim of this thesis.
+
+% ============================================================
+\section{Conclusion and Open Problems}\label{sec:lit-conclusion}
+
+Three very recent papers define the research frontier and help to
+scope the contribution of the present thesis.
+\citet{hu2025} extend the MV-FBSDE machinery to
+environments with common noise by parameterising the measure flow
+through path signatures rather than empirical measures.  Their deep
+signature approach combines signature features — a tractable
+compression of the history of a stochastic process — with neural
+networks that operate on the signature rather than on the full path,
+and establishes convergence in terms of fictitious-play iterations
+under supervised-learning error control.  This is the natural
+mean-field generalisation of common-noise MFGs
+\citep{carmona2016, carmona2018} to the
+numerical regime and offers a promising route for future extensions
+of the present thesis to market making under systemic shocks.
+
+\citet{navarro2025} propose a unified mean-field
+framework that bridges informal bargaining markets and formal LOBs by
+modelling both as interacting-particle systems on a one-dimensional
+price lattice.  Their paper supports the central narrative of this
+thesis — that dealer markets are natural mean-field environments —
+and suggests directions for mapping the Cont--Xiong solver onto
+fully general LOB topologies.  Finally, \citet{cheridito2025}
+present ABIDES-MARL, a GPU-accelerated multi-agent reinforcement
+learning environment built on top of ABIDES for studying endogenous
+price formation in LOBs.  ABIDES-MARL addresses the scalability
+limitations of earlier LOB simulators by exploiting parallelism for
+both agent policy updates and environment simulation, providing a
+platform on which the tacit-collusion experiments of
+\citet{cont2024} can in principle be extended to hundreds
+of agents.
+
+Taken together, the literature gives a consistent diagnosis and a
+narrow research gap.  BSDE theory and MFG theory are both mature,
+and their probabilistic synthesis via MV-FBSDEs is well understood
+\citep{pardoux1990, carmona2018,
+buckdahn2009viscosity, chassagneux2014}.  Deep-learning
+numerics for the Brownian-only case are well-studied, with both
+empirical validation \citep{ehanjentzen2017, han2018,
+beck2019} and partial convergence theory
+\citep{carmona2019, hure2020}, and have recently
+been extended to the curse-of-dimensionality-free MV setting
+\citep{han2022}.  Financial applications to multi-agent
+market making are only beginning: \citet{cont2024} provides
+the stochastic-game model and a decisive empirical finding on tacit
+collusion, and emerging frontiers include common-noise signatures
+\citep{hu2025}, mean-field LOB embeddings
+\citep{navarro2025}, and GPU-scale MARL environments
+\citep{cheridito2025}.  What no existing paper provides is, to
+state the central open question of this review in a single
+sentence: a validated BSDE-with-jumps solution of the
+Cont--Xiong game, an explanation of why naive deep BSDE methods
+fail in that setting, or a quantitative operationalisation of
+the MADDPG--Nash spread gap as a detector statistic for
+algorithmic collusion.  These three absences motivate a single
+coherent research arc --- \emph{making the Cont--Xiong
+equilibrium computable, ensuring that the computation is
+correct, and extracting economically meaningful structure from
+the resulting solution} --- which this thesis takes up through
+the following questions.  (i) Can a deep BSDEJ solver recover
+the Cont--Xiong Nash equilibrium, and can the $O(1/\sqrt{N})$
+propagation-of-chaos rate \citep{buckdahn2009limit} be verified
+empirically on this specific model?  (ii) Which failure modes
+(BatchNorm erasure, representation collapse, generator bypass)
+derail naive applications of deep BSDE to mean-field games, and
+how can they be systematically diagnosed and repaired?  (iii)
+Can the spread gap $|S_{\mathrm{MADDPG}} - S_{\mathrm{Nash}}|$
+be elevated from an empirical observation in \citet{cont2024}
+to a measurement tool for regulators of algorithmic markets?
+Taken together, these three questions define the scope of the
+thesis that this review sets up.

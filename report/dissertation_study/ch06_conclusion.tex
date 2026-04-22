@@ -60,7 +60,7 @@ Five directions for extension stand out.
 
 \paragraph{Continuous-time BSDEJ with path-sampled jumps.}  The current BSDEJ solvers use Poisson increments \emph{aggregated} over time-discretisation steps $\Delta t$. A more refined scheme would sample actual jump times $\tau_1, \tau_2, \ldots$ explicitly and run the BSDE Euler update piecewise. This reduces time-discretisation bias, especially for large $\Delta t$ or rare jumps, and would tighten the validation error below the current $2.6\%$.
 
-\paragraph{Common noise via deep signatures.}  Hu, Lyons, and collaborators \cite{hu2025} have recently proposed using the \emph{signature} of the common-noise path $(W^S_s)_{s \leq t}$ as a conditioning feature in deep BSDE solvers. This would allow the CX model extension with common noise to be attacked directly. The repo's exploratory scripts in this direction should be extended.
+\paragraph{Common noise via deep signatures.}  Hu, Jin, and Lauri\`ere \cite{hu2025} have recently proposed using the \emph{signature} of the common-noise path $(W^S_s)_{s \leq t}$ as a conditioning feature in deep BSDE solvers. This would allow the CX model extension with common noise to be addressed directly. The repo's exploratory scripts in this direction should be extended.
 
 \paragraph{Multi-asset with curse-of-dimensionality regimes.}  The multi-asset extension ($K$ correlated assets, each with its own inventory) has state dimension scaling as $2K$. At $K = 3$ the exact solver requires $10^3$ grid points per dimension and stalls; at $K = 5$ it is infeasible. The deep BSDE methodology scales linearly in $K$ and should be the natural tool; [\texttt{scripts/multiasset\_K5\_CoD.py}](../../scripts/multiasset_K5_CoD.py) explores this regime.
 
